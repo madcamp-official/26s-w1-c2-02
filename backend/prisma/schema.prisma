@@ -1,0 +1,75 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                 BigInt             @id @default(autoincrement())
+  username           String             @unique @db.VarChar(20)
+  passwordHash       String             @map("password_hash") @db.VarChar(255)
+  createdAt          DateTime           @default(now()) @map("created_at")
+  createdModels      WakppuballModel[]  @relation("CreatedModels")
+  ownedWakppuballs   UserWakppuball[]   @relation("OwnedWakppuballs")
+  acquiredSources    UserWakppuball[]   @relation("AcquiredFromUser")
+  matchesAsA         MatchHistory[]     @relation("MatchUserA")
+  matchesAsB         MatchHistory[]     @relation("MatchUserB")
+
+  @@map("users")
+}
+
+model WakppuballModel {
+  id                 BigInt             @id @default(autoincrement())
+  creatorUserId      BigInt?            @map("creator_user_id")
+  name               String?            @db.VarChar(50)
+  modelUrl           String?            @map("model_url")
+  thumbnailUrl       String?            @map("thumbnail_url")
+  customizationJson  Json?              @map("customization_json")
+  fractureJson       Json?              @map("fracture_json")
+  createdAt          DateTime           @default(now()) @map("created_at")
+  creator            User?              @relation("CreatedModels", fields: [creatorUserId], references: [id])
+  owners             UserWakppuball[]
+
+  @@map("wakppuball_models")
+}
+
+model UserWakppuball {
+  id                   BigInt            @id @default(autoincrement())
+  ownerUserId          BigInt            @map("owner_user_id")
+  wakppuballModelId    BigInt            @map("wakppuball_model_id")
+  acquiredType         AcquiredType       @default(CREATED) @map("acquired_type")
+  acquiredFromUserId   BigInt?           @map("acquired_from_user_id")
+  isMain               Boolean           @default(false) @map("is_main")
+  interactionStateJson Json?             @map("interaction_state_json")
+  acquiredAt           DateTime          @default(now()) @map("acquired_at")
+  owner                User              @relation("OwnedWakppuballs", fields: [ownerUserId], references: [id])
+  model                WakppuballModel   @relation(fields: [wakppuballModelId], references: [id])
+  acquiredFromUser     User?             @relation("AcquiredFromUser", fields: [acquiredFromUserId], references: [id])
+  sentByA              MatchHistory[]    @relation("MatchSentByA")
+  sentByB              MatchHistory[]    @relation("MatchSentByB")
+
+  @@map("user_wakppuballs")
+}
+
+model MatchHistory {
+  id                       BigInt           @id @default(autoincrement())
+  userAId                  BigInt           @map("user_a_id")
+  userBId                  BigInt           @map("user_b_id")
+  userASentWakppuballId    BigInt?          @map("user_a_sent_wakppuball_id")
+  userBSentWakppuballId    BigInt?          @map("user_b_sent_wakppuball_id")
+  matchedAt                DateTime         @default(now()) @map("matched_at")
+  userA                    User             @relation("MatchUserA", fields: [userAId], references: [id])
+  userB                    User             @relation("MatchUserB", fields: [userBId], references: [id])
+  userASentWakppuball      UserWakppuball?  @relation("MatchSentByA", fields: [userASentWakppuballId], references: [id])
+  userBSentWakppuball      UserWakppuball?  @relation("MatchSentByB", fields: [userBSentWakppuballId], references: [id])
+
+  @@map("match_history")
+}
+
+enum AcquiredType {
+  CREATED
+  MATCHED
+}

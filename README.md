@@ -74,15 +74,29 @@
 
 <!-- ERD 이미지 또는 테이블 정의 -->
 
+[![](https://mermaid.ink/img/pako:eNqdVduOmzAQ_RXLT62UjRIICeEtaVVVWq3al6pSS4UmYMAt2NSXzWaT_Psaw-ZCLtuUF5iZM7czY7zGMU8IDjARHylkAsqQIfNoSYREm83dHV-jJfypKr2Aongw4EKiAMWCgCLyDLgWvu8caixfsg6w3z8LlFyLmHxJZ_FfTSVVlLOQNZ4nJVzMJkhKBGExSearV--jAktQcf6ZSsXFyuArEIrGtKrbmcnZrQ7z6_V1fCVhar6a_YfP_KiXnyG27xD_QutGXz8LmlGmEE3Q1_u9VipBWWYdGZQEfbtHIX4EEecg3jmD9yE-wVYg5ZKLJMpB5odozzuCJ4YERU3MZh-SCFRj3F4anKl8r4pKq_unLlqtTcRFVHcTGcin00Ztk_uaveMOFXlSyOaNtCg6epXrcsGAdmy_JWco1mYiJX2Gei-jWtUBpAJipQXp2N7mqLPE7XCjPU83MWSOGznPTwvo8n-BRqhPoTD1qlVV89mWjzbNgtqvjKaNijyaLT2kuc21C5IKXh4UZeIxXRSwKMiRF-cFAYaojEqg50jcBTxh8fDYGAqtGOWNfAt_tki4wJ01Lq4ZIaoP7MHwrkd6A7zru-X8sG3cw5mgCQ6U0KSHSyIMZ0bEttMQq5yUht3AfCYkBV3YAW2NWwXsB-flq6fgOstxkEIhjaSrOml7G-y05peaEPGBa6ZwMBxPbBAcrPETDsZe3_U913MHvu9O_GkPr3DgeP2BNxo6I991hp7rOtsefrZJB33fdyZT1xs5Y_P2pm4Pk4SaOT00d5G9krYv_KAskg?type=png)](https://mermaid.live/edit#pako:eNqdVduO2jAQ_RXLT60ECAhmIW_Qqqq0WrUvVaU2VTQkDnGb2Kkvy7LAv6_jZCGEy5bmJZmZM7cz43iDIxFT7GMqPzJYSsgDjuxjFJUKbbfdrtigFfwpCrOALHuw4EwhH0WSgqbqDLgUvu8dSqxY8Raw1zsLVMLIiH5JZtFfwxTTTPCAV54nJVzMJmlCJeURjefrV--jAnPQUfqZKS3k2uILkJpFrCjbmanZrQ7z6_W1fBXler6e_YfP_KiXnwF27wD_QptKXz4LtmRcIxajr_cHrdKS8aVz5JBT9O0eBfgRZJSCfDfsvw_wCbYApVZCxmEKKm2iCTmCx5YEzWzMah_iEHRl3F0anK38oApzp_unLmqtSyRkWHYTWsin00Zdk4eayXGHmj5p5PKGRmYtvU5NvuDAWrbfSnAUGTuRnD1DuZdhqWoBEgmRNpK2bG9z1FrierjhgaebGLLHjZ7npwa0-b9AI5SnUNp69boo-azLR9tqQd3XkiWVij7aLW3SXOfaB0mkyBtF2XjcZBksMnrkJURGgSOmwhzYORL3AU9YbB4bS6ETw7SSb-HPFQkXuHPGxTUjhOWBbQzveqQ3wPu-a86bbeMOXkoWY19LQzs4p9JyZkXsOg2wTmlu2fXtZ0wTMJkb0M66FcB_CJG_ekphlin2E8iUlUxRJq1vg73W_lJjKj8IwzX2B57ngmB_g5-wT0jPmxBvOhh6xCMDMu7gNfa7Xm86IpPRdEzu-mRyNxjvOvjZpe33JpPh3dQjo-HYvsnUhqMxs5N6qG4jdyntXgBNgi0B)
+
 ---
 
 ## API 문서
 
 > API 주소, 요청 방식, 요청값, 응답값, 에러 상황을 정리
 
-| Method | Endpoint | 설명 | 요청 | 응답 |
-|---|---|---|---|---|
-|  |  |  |  |  |
+[API 문서 초안](docs/api.md)
+
+---
+
+## 프로젝트 구조
+
+```txt
+26s-w1-c2-02/
+  frontend/    # React/Vite 웹 클라이언트
+  backend/     # Express/TypeScript API 서버
+  docs/        # API, DB, ERD 등 설계 문서
+  infra/       # 로컬 개발/배포 인프라 메모
+  scripts/     # 문서/디자인 생성 보조 스크립트
+  outputs/     # 생성 산출물
+```
 
 ---
 
@@ -94,7 +108,10 @@
 - **실행 방법:**
 
 ```bash
-# 실행 방법 작성
+npm install
+npm run db:dev
+npm run dev:backend
+npm run dev:frontend
 ```
 
 ---
