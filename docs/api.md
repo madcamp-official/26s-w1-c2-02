@@ -8,6 +8,15 @@
 - 시간 포맷: ISO 8601 문자열
 - ID 타입: 서버에서는 `bigint`, API에서는 문자열로 반환
 
+## MVP 상호작용 규칙
+
+- 보유한 왁뿌볼은 대표 왁뿌볼로 설정되면 메인 상호작용 영역에 올라간다.
+- rotate, zoom, 말랑이 누르기 같은 일반 상호작용은 프론트엔드에서 처리하고 서버에 저장하지 않는다.
+- 왁스 뿌시기처럼 횟수를 소모하는 행동만 서버에 API 요청을 보내 `remainingBreakCount`를 1 줄인다.
+- 깨진 정도, 눌린 위치, 조각별 손상 상태는 저장하지 않는다. 새로 접속하면 모델/프리셋 기준 상태로 다시 렌더링한다.
+- `remainingBreakCount`가 0이 되어도 현재 상호작용 영역에 올라와 있는 동안은 계속 만질 수 있다.
+- `remainingBreakCount`가 0인 왁뿌볼은 대표 왁뿌볼에서 내려가거나 접속이 종료되면 `CONSUMED` 상태가 되고 컬렉션에서 사라진다.
+
 ## 공통 에러 응답
 
 ```json
@@ -141,10 +150,10 @@
       "preset": "basic-crack-01",
       "pieceCount": 12
     },
-    "interactionState": {
-      "damageLevel": 0,
-      "pressedPoints": []
-    },
+    "remainingBreakCount": 3,
+    "defaultBreakCount": 3,
+    "status": "ACTIVE",
+    "willDisappearOnUnmount": false,
     "acquiredType": "CREATED",
     "isMain": true,
     "acquiredAt": "2026-07-03T10:10:00.000Z"
@@ -181,6 +190,8 @@
 }
 ```
 
+`defaultBreakCount`와 최초 `remainingBreakCount`는 서버가 서비스 규칙에 따라 부여한다. MVP에서는 모든 새 왁뿌볼에 `3`을 부여한다.
+
 ```json
 {
   "wakppuball": {
@@ -188,35 +199,85 @@
     "modelId": "5",
     "name": "노란 왁뿌볼",
     "isMain": true,
+    "remainingBreakCount": 3,
+    "status": "ACTIVE",
     "createdAt": "2026-07-03T10:10:00.000Z"
   }
 }
 ```
 
-### 왁뿌볼 인터랙션 상태 저장
+### 왁뿌볼 뿌시기 카운트 차감
 
-`PATCH /wakppuballs/:ownedId/state`
+`POST /wakppuballs/:ownedId/break`
+
+왁스 뿌시기처럼 횟수를 소모하는 상호작용이 확정될 때 호출한다. rotate, zoom, 말랑이 누르기처럼 횟수를 소모하지 않는 상호작용은 호출하지 않는다.
 
 ```json
 {
-  "interactionState": {
-    "damageLevel": 2,
-    "pressedPoints": [
-      {
-        "x": 0.12,
-        "y": 0.4,
-        "z": -0.2,
-        "strength": 0.8
-      }
-    ],
-    "brokenPieceIds": ["piece-01", "piece-04"]
-  }
+  "interactionType": "WAX_BREAK"
 }
 ```
 
 ```json
 {
-  "ok": true
+  "wakppuball": {
+    "ownedId": "10",
+    "remainingBreakCount": 2,
+    "status": "ACTIVE",
+    "willDisappearOnUnmount": false
+  }
+}
+```
+
+카운트가 0이 된 경우:
+
+```json
+{
+  "wakppuball": {
+    "ownedId": "10",
+    "remainingBreakCount": 0,
+    "status": "ACTIVE",
+    "willDisappearOnUnmount": true
+  }
+}
+```
+
+주요 에러:
+
+| Status | code | 상황 |
+|---|---|---|
+| 400 | `NO_BREAK_COUNT_LEFT` | 이미 남은 뿌시기 횟수가 0 |
+| 404 | `OWNED_WAKPPUBALL_NOT_FOUND` | 내 보유 왁뿌볼이 아님 |
+| 409 | `WAKPPUBALL_CONSUMED` | 이미 소멸된 왁뿌볼 |
+
+### 대표 왁뿌볼 상호작용 종료
+
+`POST /wakppuballs/me/main/session-end`
+
+브라우저 탭 종료, 로그아웃, 새로고침 직전 등 현재 대표 왁뿌볼을 상호작용 영역에서 내려야 하는 시점에 호출한다. Bearer 토큰 방식에서는 페이지 종료 시 `fetch`의 `keepalive` 옵션 사용을 고려한다.
+
+```json
+{
+  "reason": "PAGE_HIDE"
+}
+```
+
+남은 뿌시기 횟수가 0이면 해당 왁뿌볼은 소멸된다.
+
+```json
+{
+  "ok": true,
+  "consumed": true,
+  "consumedWakppuballId": "10"
+}
+```
+
+남은 뿌시기 횟수가 1 이상이면 그대로 보유 상태를 유지한다.
+
+```json
+{
+  "ok": true,
+  "consumed": false
 }
 ```
 
@@ -235,6 +296,8 @@
       "name": "노란 왁뿌볼",
       "thumbnailUrl": "https://example.com/thumbnails/5.png",
       "acquiredType": "CREATED",
+      "remainingBreakCount": 2,
+      "status": "ACTIVE",
       "isMain": true,
       "acquiredAt": "2026-07-03T10:10:00.000Z"
     },
@@ -248,12 +311,16 @@
         "id": "2",
         "username": "yoobin"
       },
+      "remainingBreakCount": 3,
+      "status": "ACTIVE",
       "isMain": false,
       "acquiredAt": "2026-07-03T11:00:00.000Z"
     }
   ]
 }
 ```
+
+`CONSUMED` 상태의 왁뿌볼은 컬렉션 목록에 포함하지 않는다.
 
 ### 대표 왁뿌볼 선택
 
@@ -262,15 +329,20 @@
 ```json
 {
   "ok": true,
-  "mainWakppuballId": "11"
+  "mainWakppuballId": "11",
+  "previousMainConsumed": true,
+  "consumedWakppuballId": "10"
 }
 ```
+
+기존 대표 왁뿌볼의 `remainingBreakCount`가 0이면, 새 대표 왁뿌볼로 교체하는 순간 기존 대표 왁뿌볼은 `CONSUMED` 처리되어 컬렉션에서 사라진다.
 
 주요 에러:
 
 | Status | code | 상황 |
 |---|---|---|
 | 404 | `OWNED_WAKPPUBALL_NOT_FOUND` | 내 컬렉션에 없는 왁뿌볼 |
+| 409 | `WAKPPUBALL_CONSUMED` | 이미 소멸된 왁뿌볼 |
 
 ## 매칭 Matching
 
@@ -305,7 +377,8 @@
   "partnerWakppuball": {
     "ownedId": "12",
     "name": "파란 왁뿌볼",
-    "thumbnailUrl": "https://example.com/thumbnails/12.png"
+    "thumbnailUrl": "https://example.com/thumbnails/12.png",
+    "remainingBreakCount": 3
   }
 }
 ```
@@ -315,7 +388,9 @@
 | Status | code | 상황 |
 |---|---|---|
 | 400 | `MAIN_WAKPPUBALL_REQUIRED` | 저장된 왁뿌볼이 없어 매칭 불가 |
+| 400 | `BREAK_COUNT_REQUIRED` | 대표 왁뿌볼의 남은 뿌시기 횟수가 0이라 매칭 불가 |
 | 409 | `ALREADY_IN_QUEUE` | 이미 매칭 대기 중 |
+| 409 | `WAKPPUBALL_CONSUMED` | 이미 소멸된 왁뿌볼 |
 
 ### 매칭 대기열 이탈
 
@@ -366,7 +441,9 @@
     "modelId": "8",
     "name": "파란 왁뿌볼",
     "thumbnailUrl": "https://example.com/thumbnails/8.png",
-    "acquiredType": "MATCHED"
+    "acquiredType": "MATCHED",
+    "remainingBreakCount": 3,
+    "status": "ACTIVE"
   }
 }
 ```
@@ -388,5 +465,5 @@
 - GPS 기반 캠퍼스 인증
 - 매칭 취소/거절
 - 받은 왁뿌볼과 만든 왁뿌볼 필터
-- 왁뿌볼 손상 상태 초기화
+- 접속 종료 감지 실패 시 소멸 보정 작업
 - 랭킹/업적/방문 기록

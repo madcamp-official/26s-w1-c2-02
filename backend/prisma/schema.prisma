@@ -29,6 +29,7 @@ model WakppuballModel {
   thumbnailUrl       String?            @map("thumbnail_url")
   customizationJson  Json?              @map("customization_json")
   fractureJson       Json?              @map("fracture_json")
+  defaultBreakCount  Int                @default(3) @map("default_break_count")
   createdAt          DateTime           @default(now()) @map("created_at")
   creator            User?              @relation("CreatedModels", fields: [creatorUserId], references: [id])
   owners             UserWakppuball[]
@@ -43,14 +44,18 @@ model UserWakppuball {
   acquiredType         AcquiredType       @default(CREATED) @map("acquired_type")
   acquiredFromUserId   BigInt?           @map("acquired_from_user_id")
   isMain               Boolean           @default(false) @map("is_main")
-  interactionStateJson Json?             @map("interaction_state_json")
-  acquiredAt           DateTime          @default(now()) @map("acquired_at")
-  owner                User              @relation("OwnedWakppuballs", fields: [ownerUserId], references: [id])
-  model                WakppuballModel   @relation(fields: [wakppuballModelId], references: [id])
-  acquiredFromUser     User?             @relation("AcquiredFromUser", fields: [acquiredFromUserId], references: [id])
-  sentByA              MatchHistory[]    @relation("MatchSentByA")
-  sentByB              MatchHistory[]    @relation("MatchSentByB")
+  remainingBreakCount  Int                    @default(3) @map("remaining_break_count")
+  status               OwnedWakppuballStatus  @default(ACTIVE)
+  acquiredAt           DateTime               @default(now()) @map("acquired_at")
+  consumedAt           DateTime?              @map("consumed_at")
+  owner                User                   @relation("OwnedWakppuballs", fields: [ownerUserId], references: [id])
+  model                WakppuballModel        @relation(fields: [wakppuballModelId], references: [id])
+  acquiredFromUser     User?                  @relation("AcquiredFromUser", fields: [acquiredFromUserId], references: [id])
+  sentByA              MatchHistory[]         @relation("MatchSentByA")
+  sentByB              MatchHistory[]         @relation("MatchSentByB")
 
+  @@index([ownerUserId, status])
+  @@index([ownerUserId, isMain])
   @@map("user_wakppuballs")
 }
 
@@ -72,4 +77,9 @@ model MatchHistory {
 enum AcquiredType {
   CREATED
   MATCHED
+}
+
+enum OwnedWakppuballStatus {
+  ACTIVE
+  CONSUMED
 }
