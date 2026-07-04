@@ -5,6 +5,7 @@ import { collectionRouter } from './modules/collection/collection.routes.js';
 import { matchingRouter } from './modules/matching/matching.routes.js';
 import { usersRouter } from './modules/users/users.routes.js';
 import { wakppuballsRouter } from './modules/wakppuballs/wakppuballs.routes.js';
+import { errorHandler } from './common/api-error.js';
 
 export function createApp() {
   const app = express();
@@ -21,6 +22,7 @@ export function createApp() {
   app.use('/api/wakppuballs', wakppuballsRouter);
   app.use('/api/collection', collectionRouter);
   app.use('/api/matching', matchingRouter);
+  app.use(errorHandler);
 
   return app;
 }
