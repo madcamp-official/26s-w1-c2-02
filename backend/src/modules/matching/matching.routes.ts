@@ -39,15 +39,25 @@ const TEMP_WAKPPUBALLS: Array<{
     name: '파란 임시 왁뿌볼',
     modelUrl: '/assets/temp-blue-wakppuball.png',
     thumbnailUrl: '/assets/temp-blue-wakppuball.png',
-    customization: { bodyColor: '#4f8cff', face: 'smile' },
-    fracture: { preset: 'basic-crack-01', pieceCount: 12 }
+    customization: {
+      outerColor: '#4f8cff',
+      innerColor: '#ffffff',
+      pattern: { type: 'preset', id: 'dots' },
+      shape: 'sphere'
+    },
+    fracture: { thicknessPreset: 'medium' }
   },
   {
     name: '초록 임시 왁뿌볼',
     modelUrl: '/assets/temp-green-wakppuball.png',
     thumbnailUrl: '/assets/temp-green-wakppuball.png',
-    customization: { bodyColor: '#4ccf7a', face: 'wink' },
-    fracture: { preset: 'basic-crack-02', pieceCount: 10 }
+    customization: {
+      outerColor: '#4ccf7a',
+      innerColor: '#ffffff',
+      pattern: { type: 'preset', id: 'stripes' },
+      shape: 'sphere'
+    },
+    fracture: { thicknessPreset: 'thin' }
   }
 ];
 
@@ -159,6 +169,8 @@ matchingRouter.post(
         name: result.model.name,
         modelUrl: result.model.modelUrl,
         thumbnailUrl: result.model.thumbnailUrl,
+        customization: result.model.customizationJson,
+        fracture: result.model.fractureJson,
         acquiredType: result.owned.acquiredType,
         remainingBreakCount: result.owned.remainingBreakCount,
         status: result.owned.status,
