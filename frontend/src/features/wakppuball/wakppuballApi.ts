@@ -1,0 +1,105 @@
+import { ApiError, apiRequest } from '../../shared/api/http';
+import { fetchMe } from '../auth/authApi';
+import { getCollection } from '../collection/collectionApi';
+
+// Shape consumed by the main screen. The optional fields are only returned by the
+// real GET /wakppuballs/me/main; the temporary composition (below) can't supply
+// them, and the UI doesn't use them this sprint.
+export type MainWakppuball = {
+  ownedId: string;
+  modelId: string;
+  name: string;
+  modelUrl: string | null;
+  thumbnailUrl: string | null;
+  remainingBreakCount: number;
+  status: 'ACTIVE' | 'CONSUMED';
+  acquiredType: 'CREATED' | 'MATCHED';
+  isMain: boolean;
+  acquiredAt: string;
+  customization?: Record<string, unknown>;
+  fracture?: Record<string, unknown>;
+  defaultBreakCount?: number;
+  willDisappearOnUnmount?: boolean;
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Main-ball fetch. Two implementations, one active alias at the bottom.
+//
+// The backend hasn't implemented GET /wakppuballs/me/main yet (returns 501), so
+// the app currently composes the main ball from /users/me + /collection.
+// When the backend implements the endpoint, revert by pointing `getMainWakppuball`
+// at `getMainWakppuballViaEndpoint` — no component changes needed.
+// See current-sprint.md "Backend Rules Discovered at Phase 2–6".
+// ─────────────────────────────────────────────────────────────────────────────
+
+// ORIGINAL: direct endpoint call (use this once the backend implements it).
+export function getMainWakppuballViaEndpoint(): Promise<{ wakppuball: MainWakppuball }> {
+  return apiRequest<{ wakppuball: MainWakppuball }>('/wakppuballs/me/main', { method: 'GET' });
+}
+
+// TEMPORARY substitute: /users/me → mainWakppuballId → find it in /collection.
+// Throws the same MAIN_WAKPPUBALL_NOT_FOUND ApiError as the real endpoint so the
+// calling component's empty-state handling is unchanged.
+export async function getMainWakppuballViaComposition(): Promise<{ wakppuball: MainWakppuball }> {
+  const { user } = await fetchMe();
+  if (!user.mainWakppuballId) {
+    throw new ApiError('MAIN_WAKPPUBALL_NOT_FOUND', '저장된 대표 왁뿌볼이 없습니다.');
+  }
+
+  const { items } = await getCollection();
+  const found = items.find((item) => item.ownedId === user.mainWakppuballId);
+  if (!found) {
+    // mainWakppuballId set but not in the (ACTIVE) collection → treat as no main.
+    throw new ApiError('MAIN_WAKPPUBALL_NOT_FOUND', '저장된 대표 왁뿌볼이 없습니다.');
+  }
+
+  return {
+    wakppuball: {
+      ownedId: found.ownedId,
+      modelId: found.modelId,
+      name: found.name,
+      modelUrl: found.modelUrl,
+      thumbnailUrl: found.thumbnailUrl,
+      remainingBreakCount: found.remainingBreakCount,
+      status: found.status,
+      acquiredType: found.acquiredType,
+      isMain: found.isMain,
+      acquiredAt: found.acquiredAt
+    }
+  };
+}
+
+// Active implementation. Swap to getMainWakppuballViaEndpoint when backend is ready.
+export function getMainWakppuball(): Promise<{ wakppuball: MainWakppuball }> {
+  return getMainWakppuballViaComposition();
+}
+
+// Body for POST /wakppuballs. All fields optional on the backend.
+export type CreateWakppuballBody = {
+  name?: string;
+  modelUrl?: string | null;
+  thumbnailUrl?: string | null;
+  customization?: Record<string, unknown>;
+  fracture?: Record<string, unknown>;
+  setAsMain?: boolean;
+};
+
+// POST /wakppuballs response is a narrower shape than the main-ball read.
+export type CreatedWakppuball = {
+  ownedId: string;
+  modelId: string;
+  name: string;
+  modelUrl: string | null;
+  thumbnailUrl: string | null;
+  isMain: boolean;
+  remainingBreakCount: number;
+  status: 'ACTIVE' | 'CONSUMED';
+  createdAt: string;
+};
+
+export function createWakppuball(body: CreateWakppuballBody): Promise<{ wakppuball: CreatedWakppuball }> {
+  return apiRequest<{ wakppuball: CreatedWakppuball }>('/wakppuballs', {
+    method: 'POST',
+    body: JSON.stringify(body)
+  });
+}
