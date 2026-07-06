@@ -43,6 +43,8 @@ collectionRouter.get(
         name: owned.model.name,
         modelUrl: owned.model.modelUrl,
         thumbnailUrl: owned.model.thumbnailUrl,
+        customization: owned.model.customizationJson,
+        fracture: owned.model.fractureJson,
         acquiredType: owned.acquiredType,
         acquiredFrom: owned.acquiredFromUser
           ? {
