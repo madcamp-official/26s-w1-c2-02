@@ -7,7 +7,10 @@ export type ErrorCode =
   | 'NOT_FOUND'
   | 'CONFLICT'
   | 'USERNAME_ALREADY_EXISTS'
-  | 'INVALID_CREDENTIALS';
+  | 'INVALID_CREDENTIALS'
+  | 'MAIN_WAKPPUBALL_REQUIRED'
+  | 'BREAK_COUNT_REQUIRED'
+  | 'OWNED_WAKPPUBALL_NOT_FOUND';
 
 export class ApiError extends Error {
   statusCode: number;
