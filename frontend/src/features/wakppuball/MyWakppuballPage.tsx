@@ -20,7 +20,7 @@ import {
   type MatchQueueBody,
   type MatchStatusResult
 } from '../matching/matchingApi';
-import { createWakppuball, getMainWakppuball, sessionEndMainWakppuball, type MainWakppuball } from './wakppuballApi';
+import { createWakppuball, getMainWakppuball, type MainWakppuball } from './wakppuballApi';
 import { DEFAULT_CUSTOMIZATION, DEFAULT_FRACTURE } from './wakppuballDefaults';
 import { WakppuballView } from './WakppuballView';
 // The main-screen interaction stage is the one place a wakppuball renders in 3D
@@ -28,7 +28,8 @@ import { WakppuballView } from './WakppuballView';
 // tiles, the create preview, and match results stay on WakppuballView's CSS
 // fallback (SHAPE_MODEL_ASSETS is intentionally left empty so those call sites
 // don't pick up a 3D render).
-import { WakppuballViewer } from './WakppuballViewer';
+import { WakppuballViewer, type WakppuballViewerHandle } from './WakppuballViewer';
+import { useBgmToggle } from '../../shared/sound/useBgmToggle';
 import type {
   WakppuballCustomization,
   WakppuballFracture,
@@ -159,6 +160,26 @@ function IconCollection() {
   );
 }
 
+function IconSpeakerOn() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M4.75 9.75h3l4.5-3.75v12l-4.5-3.75h-3z" />
+      <path d="M16.25 9.25a3.5 3.5 0 0 1 0 5.5" />
+      <path d="M18.5 7a6.75 6.75 0 0 1 0 10" />
+    </svg>
+  );
+}
+
+function IconSpeakerOff() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M4.75 9.75h3l4.5-3.75v12l-4.5-3.75h-3z" />
+      <path d="m16.5 9.5 4 4" />
+      <path d="m20.5 9.5-4 4" />
+    </svg>
+  );
+}
+
 function IconClose() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -254,6 +275,8 @@ export function MyWakppuballPage() {
   const [matchOrigin, setMatchOrigin] = useState<PopOrigin | null>(null);
   const modalSheetRef = useRef<HTMLElement | null>(null);
   const matchSheetRef = useRef<HTMLDivElement | null>(null);
+  const viewerRef = useRef<WakppuballViewerHandle>(null);
+  const bgm = useBgmToggle();
 
   usePopOrigin(activeModal !== null, popOrigin, modalSheetRef);
   usePopOrigin(matchOpen, matchOrigin, matchSheetRef);
@@ -383,12 +406,11 @@ export function MyWakppuballPage() {
     }
   }
 
-  function handleLogout() {
-    // Fire before signOut() clears the token — apiRequest reads it synchronously
-    // from storage, so this would go out unauthenticated afterward.
-    sessionEndMainWakppuball('LOGOUT').catch((error) => {
-      console.error('Failed to report wakppuball session end', error);
-    });
+  async function handleLogout() {
+    // Await the pending break report (if any) before signOut() clears the
+    // token — apiRequest reads it synchronously from storage, so firing this
+    // afterward would send it unauthenticated and lose the decrement.
+    await viewerRef.current?.flushBreakReport();
     signOut();
     navigate('/login', { replace: true });
   }
@@ -466,9 +488,14 @@ export function MyWakppuballPage() {
         <IconButton label="내 정보" onClick={openProfile}>
           <IconUser />
         </IconButton>
-        <IconButton label="내 컬렉션" onClick={openCollection}>
-          <IconCollection />
-        </IconButton>
+        <div className="home-topbar-group">
+          <IconButton label={bgm.isOn ? '배경음악 끄기' : '배경음악 켜기'} onClick={bgm.toggle}>
+            {bgm.isOn ? <IconSpeakerOn /> : <IconSpeakerOff />}
+          </IconButton>
+          <IconButton label="내 컬렉션" onClick={openCollection}>
+            <IconCollection />
+          </IconButton>
+        </div>
       </header>
 
       <div className="brand-mark">
@@ -563,7 +590,12 @@ export function MyWakppuballPage() {
                 a key React would just update props on the same instance — the
                 old ball's popped pieces (and the effect that reports them once
                 per session, see WakppuballViewer.tsx) would leak into the new one. */}
-            <WakppuballViewer key={view.wakppuball.ownedId} ownedId={view.wakppuball.ownedId} />
+            <WakppuballViewer
+              key={view.wakppuball.ownedId}
+              ref={viewerRef}
+              ownedId={view.wakppuball.ownedId}
+              remainingBreakCount={view.wakppuball.remainingBreakCount}
+            />
             <div className="main-ball-caption">
               <p>{view.wakppuball.name}</p>
               <span>남은 뿌시기 횟수 {view.wakppuball.remainingBreakCount}</span>
@@ -646,6 +678,7 @@ export function MyWakppuballPage() {
                         <WakppuballView name={item.name} customization={item.customization} />
                         <strong>{item.name}</strong>
                         <span>{item.isMain ? '대표 왁뿌볼' : item.acquiredType === 'MATCHED' ? '매칭 획득' : '직접 생성'}</span>
+                        <span>남은 뿌시기 {item.remainingBreakCount}</span>
                       </button>
                     ))}
                   </div>

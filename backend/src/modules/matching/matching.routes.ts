@@ -177,12 +177,40 @@ async function findValidWaitingEntry(
   return null;
 }
 
-async function createMatchedOwnedWakppuball(
+// One collection slot per partner (enforced by a unique index on
+// ownerUserId+acquiredFromUserId — see schema.prisma). Matching the same
+// person again refills that existing slot back to a full break count
+// instead of creating a duplicate; matching someone new creates it.
+// isMain is left untouched on refill so an existing main-ball choice isn't
+// silently overridden by a later match.
+async function createOrRefillMatchedOwnedWakppuball(
   tx: Tx,
   receiverUserId: bigint,
   sourceUserId: bigint,
   sourceWakppuball: OwnedWithModel
 ) {
+  const existing = await tx.userWakppuball.findFirst({
+    where: {
+      ownerUserId: receiverUserId,
+      acquiredFromUserId: sourceUserId
+    }
+  });
+
+  if (existing) {
+    return tx.userWakppuball.update({
+      where: { id: existing.id },
+      data: {
+        wakppuballModelId: sourceWakppuball.wakppuballModelId,
+        remainingBreakCount: sourceWakppuball.model.defaultBreakCount,
+        status: 'ACTIVE',
+        consumedAt: null
+      },
+      include: {
+        model: true
+      }
+    });
+  }
+
   return tx.userWakppuball.create({
     data: {
       ownerUserId: receiverUserId,
@@ -348,13 +376,13 @@ matchingRouter.post(
       const waitingUserSelectedWakppuball = waitingEntry.selectedWakppuball;
 
       const [waitingUserReceived, currentUserReceived] = await Promise.all([
-        createMatchedOwnedWakppuball(
+        createOrRefillMatchedOwnedWakppuball(
           tx,
           waitingUserId,
           ownerUserId,
           selectedWakppuball
         ),
-        createMatchedOwnedWakppuball(
+        createOrRefillMatchedOwnedWakppuball(
           tx,
           ownerUserId,
           waitingUserId,
@@ -409,6 +437,24 @@ matchingRouter.post(
             totalAcquiredCount: {
               increment: 1
             }
+          }
+        }),
+        // A successful match "refreshes" the ball each side sent, back to a
+        // full break count — trading it is what recharges it, not just time.
+        tx.userWakppuball.update({
+          where: {
+            id: waitingUserSelectedWakppuball.id
+          },
+          data: {
+            remainingBreakCount: waitingUserSelectedWakppuball.model.defaultBreakCount
+          }
+        }),
+        tx.userWakppuball.update({
+          where: {
+            id: selectedWakppuball.id
+          },
+          data: {
+            remainingBreakCount: selectedWakppuball.model.defaultBreakCount
           }
         })
       ]);

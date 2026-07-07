@@ -188,9 +188,12 @@ wakppuballsRouter.post(
         throw new ApiError(400, 'NO_BREAK_COUNT_LEFT', '남은 뿌시기 횟수가 없습니다.');
       }
 
-      // Reaching 0 here doesn't consume the wakppuball by itself — per
-      // docs/api.md it stays ACTIVE and interactable until it's stepped down
-      // as main (select-main, collection.routes.ts) or the session ends.
+      // Reaching 0 doesn't consume the wakppuball — it stays ACTIVE and in
+      // the collection, just no longer touchable/crackable (enforced
+      // client-side once remainingBreakCount is 0). It's only ever consumed
+      // by stepping down as main while depleted (select-main,
+      // collection.routes.ts), or refilled back to full by a new match with
+      // the same partner (createOrRefillMatchedOwnedWakppuball).
       return tx.userWakppuball.update({
         where: { id: targetId },
         data: { remainingBreakCount: { decrement: 1 } }
@@ -201,51 +204,8 @@ wakppuballsRouter.post(
       wakppuball: {
         ownedId: updated.id.toString(),
         remainingBreakCount: updated.remainingBreakCount,
-        status: updated.status,
-        willDisappearOnUnmount: updated.remainingBreakCount === 0
+        status: updated.status
       }
     });
-  })
-);
-
-const sessionEndBodySchema = z.object({
-  reason: z.string().min(1).max(50)
-});
-
-wakppuballsRouter.post(
-  '/me/main/session-end',
-  requireAuth,
-  asyncHandler(async (req: AuthenticatedRequest, res) => {
-    if (!req.user) {
-      throw new ApiError(401, 'UNAUTHORIZED', '로그인이 필요합니다.');
-    }
-
-    validateBody(sessionEndBodySchema, req);
-    const ownerUserId = BigInt(req.user.id);
-
-    const result = await prisma.$transaction(async (tx) => {
-      const main = await tx.userWakppuball.findFirst({
-        where: { ownerUserId, isMain: true, status: 'ACTIVE' }
-      });
-
-      // No main ball, or it still has break count left: nothing to consume.
-      // Tab close/logout/refresh fire this best-effort, so a no-op is fine.
-      if (!main || main.remainingBreakCount > 0) {
-        return { consumedWakppuballId: null as string | null };
-      }
-
-      await tx.userWakppuball.update({
-        where: { id: main.id },
-        data: { isMain: false, status: 'CONSUMED', consumedAt: new Date() }
-      });
-
-      return { consumedWakppuballId: main.id.toString() };
-    });
-
-    if (result.consumedWakppuballId) {
-      res.status(200).json({ ok: true, consumed: true, consumedWakppuballId: result.consumedWakppuballId });
-    } else {
-      res.status(200).json({ ok: true, consumed: false });
-    }
   })
 );

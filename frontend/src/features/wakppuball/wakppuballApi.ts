@@ -25,7 +25,6 @@ export type MainWakppuball = {
   customization: WakppuballCustomization | null;
   fracture: WakppuballFracture | null;
   defaultBreakCount?: number;
-  willDisappearOnUnmount?: boolean;
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -118,34 +117,18 @@ export type BrokenWakppuball = {
   ownedId: string;
   remainingBreakCount: number;
   status: WakppuballStatus;
-  willDisappearOnUnmount: boolean;
 };
 
 // Wax-break interaction confirmed (rotate/zoom/press-and-hold don't call this,
 // only a piece actually popping does). Callers should treat failures as
 // best-effort — the viewer showing this ball is already unmounting/going away.
-// `keepalive` lets the request outlive a `pagehide` (tab close/refresh).
+// `keepalive` lets the request outlive a `pagehide` (tab close/refresh); pass
+// `keepalive: false` (the default) when the caller awaits the request itself
+// before tearing anything down, e.g. logout.
 export function breakWakppuball(ownedId: string, options?: { keepalive?: boolean }): Promise<{ wakppuball: BrokenWakppuball }> {
   return apiRequest<{ wakppuball: BrokenWakppuball }>(`/wakppuballs/${ownedId}/break`, {
     method: 'POST',
     body: JSON.stringify({ interactionType: 'WAX_BREAK' }),
-    keepalive: options?.keepalive
-  });
-}
-
-// POST /wakppuballs/me/main/session-end response, per docs/api.md. Fired when
-// the main ball is stepping down from the interaction area for real: tab
-// close/refresh (pagehide) or logout. Only consumes the ball server-side if
-// its remainingBreakCount already hit 0 — it doesn't decrement anything itself.
-export type SessionEndResult = { ok: true; consumed: false } | { ok: true; consumed: true; consumedWakppuballId: string };
-
-export function sessionEndMainWakppuball(
-  reason: string,
-  options?: { keepalive?: boolean }
-): Promise<SessionEndResult> {
-  return apiRequest<SessionEndResult>('/wakppuballs/me/main/session-end', {
-    method: 'POST',
-    body: JSON.stringify({ reason }),
     keepalive: options?.keepalive
   });
 }

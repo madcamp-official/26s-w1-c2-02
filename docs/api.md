@@ -14,8 +14,10 @@
 - rotate, zoom, 말랑이 누르기 같은 일반 상호작용은 프론트엔드에서 처리하고 서버에 저장하지 않는다.
 - 왁스 뿌시기처럼 횟수를 소모하는 행동만 서버에 API 요청을 보내 `remainingBreakCount`를 1 줄인다.
 - 깨진 정도, 눌린 위치, 조각별 손상 상태는 저장하지 않는다. 새로 접속하면 모델/프리셋 기준 상태로 다시 렌더링한다.
-- `remainingBreakCount`가 0이 되어도 현재 상호작용 영역에 올라와 있는 동안은 계속 만질 수 있다.
-- `remainingBreakCount`가 0인 왁뿌볼은 대표 왁뿌볼에서 내려가거나 접속이 종료되면 `CONSUMED` 상태가 되고 컬렉션에서 사라진다.
+- `remainingBreakCount`가 0이 되면, 그 세션에서 이미 확정된 조각 상태(만졌던 조각들)는 유지된 채로 더 이상 뿌시기 상호작용(터치해서 새 조각 뿌시기)이 불가능해진다. rotate/zoom은 계속 가능하다.
+- `remainingBreakCount`가 0이어도 컬렉션에서 사라지지 않는다. `CONSUMED`는 오직 (a) 0인 상태로 대표 왁뿌볼에서 다른 왁뿌볼로 교체될 때(`select-main`), 또는 (b) 같은 상대와 다시 매칭되어 리필될 때만 상태가 바뀐다 — 리필은 `ACTIVE`로 되돌리는 방향이다.
+- 같은 상대와 다시 매칭되면 새 컬렉션 항목을 만들지 않고, 그 상대에게서 받은 기존 왁뿌볼의 `remainingBreakCount`를 기본값(3)으로 리필한다. 유저당 상대 1명에 대해 컬렉션 항목은 항상 하나뿐이다.
+- 매칭이 성사되면 양쪽이 매칭에 사용한(보낸) 자신의 왁뿌볼도 `remainingBreakCount`가 기본값(3)으로 리셋된다.
 
 ## 공통 에러 응답
 
@@ -284,24 +286,12 @@
   "wakppuball": {
     "ownedId": "10",
     "remainingBreakCount": 2,
-    "status": "ACTIVE",
-    "willDisappearOnUnmount": false
+    "status": "ACTIVE"
   }
 }
 ```
 
-카운트가 0이 된 경우:
-
-```json
-{
-  "wakppuball": {
-    "ownedId": "10",
-    "remainingBreakCount": 0,
-    "status": "ACTIVE",
-    "willDisappearOnUnmount": true
-  }
-}
-```
+카운트가 0이 된 경우에도 `status`는 `ACTIVE`로 유지된다 — 위 "MVP 상호작용 규칙" 참고. 소멸(`CONSUMED`)은 이 엔드포인트가 아니라 `select-main`(교체 시점)에서만 일어난다.
 
 주요 에러:
 
@@ -310,37 +300,6 @@
 | 400 | `NO_BREAK_COUNT_LEFT` | 이미 남은 뿌시기 횟수가 0 |
 | 404 | `OWNED_WAKPPUBALL_NOT_FOUND` | 내 보유 왁뿌볼이 아님 |
 | 409 | `WAKPPUBALL_CONSUMED` | 이미 소멸된 왁뿌볼 |
-
-### 대표 왁뿌볼 상호작용 종료
-
-`POST /wakppuballs/me/main/session-end`
-
-브라우저 탭 종료, 로그아웃, 새로고침 직전 등 현재 대표 왁뿌볼을 상호작용 영역에서 내려야 하는 시점에 호출한다. Bearer 토큰 방식에서는 페이지 종료 시 `fetch`의 `keepalive` 옵션 사용을 고려한다.
-
-```json
-{
-  "reason": "PAGE_HIDE"
-}
-```
-
-남은 뿌시기 횟수가 0이면 해당 왁뿌볼은 소멸된다.
-
-```json
-{
-  "ok": true,
-  "consumed": true,
-  "consumedWakppuballId": "10"
-}
-```
-
-남은 뿌시기 횟수가 1 이상이면 그대로 보유 상태를 유지한다.
-
-```json
-{
-  "ok": true,
-  "consumed": false
-}
-```
 
 ## 컬렉션 Collection
 
@@ -478,6 +437,8 @@
   }
 }
 ```
+
+상대에게서 받은 왁뿌볼은 상대 유저당 컬렉션에 항상 하나만 존재한다 — 같은 상대와 다시 매칭되면 새 항목을 만들지 않고 기존 항목의 `remainingBreakCount`를 3으로 리필한다(이미 `CONSUMED`였어도 `ACTIVE`로 되돌아온다). 매칭에 사용한 자신의 왁뿌볼도 이 시점에 `remainingBreakCount`가 3으로 리셋된다 — 위 "MVP 상호작용 규칙" 참고.
 
 즉시 매칭 상대가 없으면 대기열에 들어간다:
 
