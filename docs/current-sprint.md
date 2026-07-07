@@ -43,7 +43,7 @@ Promote anything permanent to CLAUDE.md at sprint end._
 
 Full spec now in `docs/api.md` ("왁뿌볼 커스터마이징 스키마" section). Summary:
 
-- `customizationJson` structure is now `{ outerColor, innerColor, pattern: { type, id }, shape }`. The old `bodyColor`/`face`/`accessory` example (Sprint 1 placeholder, `DEFAULT_CUSTOMIZATION` in `MyWakppuballPage.tsx`) is fully retired — **frontend has not been updated yet**, this sprint's task only covered `docs/api.md` + backend (Prisma validation, route code).
+- `customizationJson` structure is now `{ outerColor, innerColor, pattern: { type, id }, shape }`. The old `bodyColor`/`face`/`accessory` example (Sprint 1 placeholder) is fully retired.
 - `pattern.type` only accepts `"preset"` for now; `"custom"` is rejected with `400 VALIDATION_ERROR` (custom user images are a future sprint).
 - `pattern.id` allows a fixed preset list (`"dots"`, `"stripes"` today).
 - `shape` is an enum, `"sphere"` only today, deliberately structured so more shapes are just more enum entries.
@@ -117,4 +117,4 @@ Full spec now in `docs/api.md` ("왁뿌볼 커스터마이징 스키마" section
 ---
 
 **Previous sprint:** Sprint 1 (Frontend MVP) — see `docs/sprint-history/sprint1-summary.md`.
-Sprint 1 shipped signup/login, main screen, save, collection, and synchronous matching against the MSW mock, plus component tests and a real-backend switch. Phase 7 (Beautify) was deferred.
+Sprint 1 shipped signup/login, main screen, save, collection, and synchronous matching against a temporary mock API, plus component tests. Phase 7 (Beautify) was deferred.

@@ -30,6 +30,13 @@ const matchedResult: MatchedResult = {
     name: '파란 임시 왁뿌볼',
     modelUrl: '/blue.png',
     thumbnailUrl: '/blue.png',
+    customization: {
+      outerColor: '#4f8cff',
+      innerColor: '#ffffff',
+      pattern: { type: 'preset', id: 'dots' },
+      shape: 'sphere'
+    },
+    fracture: { thicknessPreset: 'medium' },
     acquiredType: 'MATCHED',
     remainingBreakCount: 3,
     status: 'ACTIVE',
@@ -39,6 +46,19 @@ const matchedResult: MatchedResult = {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  Object.defineProperty(navigator, 'geolocation', {
+    configurable: true,
+    value: {
+      getCurrentPosition: vi.fn((success) => {
+        success({
+          coords: {
+            latitude: 36.3683750600837,
+            longitude: 127.356771410201
+          }
+        });
+      })
+    }
+  });
 });
 
 describe('MatchingPage — state matrix', () => {
@@ -47,8 +67,8 @@ describe('MatchingPage — state matrix', () => {
     expect(screen.getByRole('button', { name: '매칭 시작' })).toBeInTheDocument();
   });
 
-  // scenarios.ts `matchOutcome`: MATCHED → partner info + collection refetch, FAILED → failure text.
-  it.each([{ matchOutcome: 'MATCHED' as const }, { matchOutcome: 'FAILED' as const }])(
+  // scenarios.ts `matchOutcome`: MATCHED → partner info + collection refetch, WAITING → queue state.
+  it.each([{ matchOutcome: 'MATCHED' as const }, { matchOutcome: 'WAITING' as const }])(
     'matchOutcome=$matchOutcome renders the right result',
     async ({ matchOutcome }) => {
       if (matchOutcome === 'MATCHED') {
@@ -60,16 +80,21 @@ describe('MatchingPage — state matrix', () => {
         expect(screen.getByText('받은 왁뿌볼: 파란 임시 왁뿌볼')).toBeInTheDocument();
         // MATCHED path must refetch the collection to reflect the granted ball.
         expect(getCollection).toHaveBeenCalledTimes(1);
+        expect(enterMatchQueue).toHaveBeenCalledWith({
+          latitude: 36.3683750600837,
+          longitude: 127.356771410201
+        });
       } else {
         enterMatchQueue.mockResolvedValue({
-          status: 'FAILED',
-          reason: 'NO_PARTNER_FOUND',
-          message: '지금은 매칭 가능한 상대가 없습니다.'
+          status: 'WAITING',
+          queueId: 'queue-1',
+          enteredAt: '2026-07-06T12:00:00.000Z'
         });
         renderWithRouter(<MatchingPage />);
         await userEvent.click(screen.getByRole('button', { name: '매칭 시작' }));
-        expect(await screen.findByText('지금은 매칭 가능한 상대가 없습니다.')).toBeInTheDocument();
-        expect(screen.getByRole('button', { name: '다시 시도' })).toBeInTheDocument();
+        expect(await screen.findByText('매칭 대기 중이에요.')).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: '상태 확인' })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: '대기 취소' })).toBeInTheDocument();
         expect(getCollection).not.toHaveBeenCalled();
       }
     }

@@ -1,6 +1,12 @@
 import { ApiError, apiRequest } from '../../shared/api/http';
 import { fetchMe } from '../auth/authApi';
 import { getCollection } from '../collection/collectionApi';
+import type {
+  WakppuballAcquiredType,
+  WakppuballCustomization,
+  WakppuballFracture,
+  WakppuballStatus
+} from './wakppuballTypes';
 
 // Shape consumed by the main screen. The optional fields are only returned by the
 // real GET /wakppuballs/me/main; the temporary composition (below) can't supply
@@ -12,12 +18,12 @@ export type MainWakppuball = {
   modelUrl: string | null;
   thumbnailUrl: string | null;
   remainingBreakCount: number;
-  status: 'ACTIVE' | 'CONSUMED';
-  acquiredType: 'CREATED' | 'MATCHED';
+  status: WakppuballStatus;
+  acquiredType: WakppuballAcquiredType;
   isMain: boolean;
   acquiredAt: string;
-  customization?: Record<string, unknown>;
-  fracture?: Record<string, unknown>;
+  customization: WakppuballCustomization | null;
+  fracture: WakppuballFracture | null;
   defaultBreakCount?: number;
   willDisappearOnUnmount?: boolean;
 };
@@ -64,7 +70,9 @@ export async function getMainWakppuballViaComposition(): Promise<{ wakppuball: M
       status: found.status,
       acquiredType: found.acquiredType,
       isMain: found.isMain,
-      acquiredAt: found.acquiredAt
+      acquiredAt: found.acquiredAt,
+      customization: found.customization,
+      fracture: found.fracture
     }
   };
 }
@@ -77,10 +85,9 @@ export function getMainWakppuball(): Promise<{ wakppuball: MainWakppuball }> {
 // Body for POST /wakppuballs. All fields optional on the backend.
 export type CreateWakppuballBody = {
   name?: string;
-  modelUrl?: string | null;
   thumbnailUrl?: string | null;
-  customization?: Record<string, unknown>;
-  fracture?: Record<string, unknown>;
+  customization?: WakppuballCustomization;
+  fracture?: WakppuballFracture;
   setAsMain?: boolean;
 };
 
@@ -91,9 +98,11 @@ export type CreatedWakppuball = {
   name: string;
   modelUrl: string | null;
   thumbnailUrl: string | null;
+  customization: WakppuballCustomization;
+  fracture: WakppuballFracture;
   isMain: boolean;
   remainingBreakCount: number;
-  status: 'ACTIVE' | 'CONSUMED';
+  status: WakppuballStatus;
   createdAt: string;
 };
 

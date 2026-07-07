@@ -1,12 +1,23 @@
 import { apiRequest } from '../../shared/api/http';
+import type {
+  WakppuballAcquiredType,
+  WakppuballCustomization,
+  WakppuballFracture,
+  WakppuballStatus
+} from '../wakppuball/wakppuballTypes';
 
 export type MatchQueueBody = {
   wakppuballOwnedId?: string;
-  // Sprint-1 test switch honored by both the mock and the backend.
-  simulateResult?: 'MATCHED' | 'FAILED';
+  latitude: number;
+  longitude: number;
 };
 
-// Synchronous match result (see current-sprint.md). No WAITING / polling / exchange.
+export type WaitingResult = {
+  status: 'WAITING';
+  queueId: string;
+  enteredAt: string;
+};
+
 export type MatchedResult = {
   status: 'MATCHED';
   matchId: string;
@@ -17,24 +28,34 @@ export type MatchedResult = {
     name: string;
     modelUrl: string | null;
     thumbnailUrl: string | null;
-    acquiredType: 'MATCHED';
+    customization: WakppuballCustomization | null;
+    fracture: WakppuballFracture | null;
+    acquiredType: WakppuballAcquiredType;
     remainingBreakCount: number;
-    status: 'ACTIVE' | 'CONSUMED';
+    status: WakppuballStatus;
     acquiredAt: string;
   };
 };
 
-export type FailedResult = {
-  status: 'FAILED';
-  reason: string;
-  message: string;
+export type NoneResult = {
+  status: 'NONE';
 };
 
-export type MatchResult = MatchedResult | FailedResult;
+export type EnterMatchQueueResult = WaitingResult | MatchedResult;
 
-export function enterMatchQueue(body: MatchQueueBody = {}): Promise<MatchResult> {
-  return apiRequest<MatchResult>('/matching/queue', {
+export type MatchStatusResult = NoneResult | WaitingResult | MatchedResult;
+
+export function enterMatchQueue(body: MatchQueueBody): Promise<EnterMatchQueueResult> {
+  return apiRequest<EnterMatchQueueResult>('/matching/queue', {
     method: 'POST',
     body: JSON.stringify(body)
   });
+}
+
+export function getMatchStatus(): Promise<MatchStatusResult> {
+  return apiRequest<MatchStatusResult>('/matching/status', { method: 'GET' });
+}
+
+export function cancelMatchQueue(): Promise<{ ok: true }> {
+  return apiRequest<{ ok: true }>('/matching/queue', { method: 'DELETE' });
 }

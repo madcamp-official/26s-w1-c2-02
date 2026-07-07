@@ -8,11 +8,19 @@ import type { CreatedWakppuball, MainWakppuball } from './wakppuballApi';
 import * as wakppuballApi from './wakppuballApi';
 
 // Unit-test the component's loading/error/empty/success state machine by mocking
-// the API layer. The scenario axis here mirrors scenarios.ts `hasMainWakppuball`.
+// the API layer.
 vi.mock('./wakppuballApi', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./wakppuballApi')>();
   return { ...actual, getMainWakppuball: vi.fn(), createWakppuball: vi.fn() };
 });
+vi.mock('../../shared/auth/AuthContext', () => ({
+  useAuth: () => ({
+    status: 'authenticated',
+    user: { id: '1', username: 'dohyun' },
+    signIn: vi.fn(),
+    signOut: vi.fn()
+  })
+}));
 
 const getMainWakppuball = vi.mocked(wakppuballApi.getMainWakppuball);
 const createWakppuball = vi.mocked(wakppuballApi.createWakppuball);
@@ -23,6 +31,13 @@ const sampleMain: MainWakppuball = {
   name: '내 첫 왁뿌볼',
   modelUrl: null,
   thumbnailUrl: '/thumb.png',
+  customization: {
+    outerColor: '#f3d35b',
+    innerColor: '#ffffff',
+    pattern: { type: 'preset', id: 'dots' },
+    shape: 'sphere'
+  },
+  fracture: { thicknessPreset: 'medium' },
   remainingBreakCount: 3,
   status: 'ACTIVE',
   acquiredType: 'CREATED',
@@ -41,7 +56,6 @@ describe('MyWakppuballPage — state matrix', () => {
     expect(screen.getByText('불러오는 중…')).toBeInTheDocument();
   });
 
-  // scenarios.ts `hasMainWakppuball`: true → success, false → empty (404).
   it.each([{ hasMainWakppuball: true }, { hasMainWakppuball: false }])(
     'hasMainWakppuball=$hasMainWakppuball renders the matching state',
     async ({ hasMainWakppuball }) => {
@@ -49,7 +63,7 @@ describe('MyWakppuballPage — state matrix', () => {
         getMainWakppuball.mockResolvedValue({ wakppuball: sampleMain });
         renderWithRouter(<MyWakppuballPage />);
         expect(await screen.findByText('내 첫 왁뿌볼')).toBeInTheDocument();
-        expect(screen.getByText('남은 뿌시기 횟수: 3')).toBeInTheDocument();
+        expect(screen.getByText('남은 뿌시기 횟수 3')).toBeInTheDocument();
         expect(screen.getByRole('button', { name: '매칭하기' })).toBeInTheDocument();
       } else {
         getMainWakppuball.mockRejectedValue(
@@ -80,6 +94,13 @@ describe('MyWakppuballPage — state matrix', () => {
       name: '내 첫 왁뿌볼',
       modelUrl: null,
       thumbnailUrl: '/thumb.png',
+      customization: {
+        outerColor: '#f3d35b',
+        innerColor: '#ffffff',
+        pattern: { type: 'preset', id: 'dots' },
+        shape: 'sphere'
+      },
+      fracture: { thicknessPreset: 'medium' },
       isMain: true,
       remainingBreakCount: 3,
       status: 'ACTIVE',

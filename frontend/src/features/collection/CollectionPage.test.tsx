@@ -19,6 +19,13 @@ const createdItem: CollectionItem = {
   name: '내가 만든 볼',
   modelUrl: null,
   thumbnailUrl: '/thumb.png',
+  customization: {
+    outerColor: '#f3d35b',
+    innerColor: '#ffffff',
+    pattern: { type: 'preset', id: 'dots' },
+    shape: 'sphere'
+  },
+  fracture: { thicknessPreset: 'medium' },
   acquiredType: 'CREATED',
   remainingBreakCount: 3,
   status: 'ACTIVE',
@@ -32,7 +39,14 @@ const matchedItem: CollectionItem = {
   name: '매칭으로 받은 볼',
   modelUrl: null,
   thumbnailUrl: '/thumb2.png',
-  acquiredType: 'MATCHED', // no acquiredFrom, mirroring the synchronous queue
+  customization: {
+    outerColor: '#4f8cff',
+    innerColor: '#ffffff',
+    pattern: { type: 'preset', id: 'stripes' },
+    shape: 'sphere'
+  },
+  fracture: { thicknessPreset: 'thin' },
+  acquiredType: 'MATCHED',
   remainingBreakCount: 3,
   status: 'ACTIVE',
   isMain: false,
