@@ -22,6 +22,12 @@ vi.mock('../../shared/auth/AuthContext', () => ({
   })
 }));
 
+// The main-screen 3D stage mounts a real WebGL <Canvas>, which jsdom can't
+// render. These tests cover page state logic, not 3D — stub it with a marker.
+vi.mock('./WakppuballViewer', () => ({
+  WakppuballViewer: () => <div data-testid="wakppuball-viewer" />
+}));
+
 const getMainWakppuball = vi.mocked(wakppuballApi.getMainWakppuball);
 const createWakppuball = vi.mocked(wakppuballApi.createWakppuball);
 
