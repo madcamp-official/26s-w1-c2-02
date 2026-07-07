@@ -8,15 +8,17 @@ datasource db {
 }
 
 model User {
-  id                 BigInt             @id @default(autoincrement())
-  username           String             @unique @db.VarChar(20)
-  passwordHash       String             @map("password_hash") @db.VarChar(255)
-  createdAt          DateTime           @default(now()) @map("created_at")
-  createdModels      WakppuballModel[]  @relation("CreatedModels")
-  ownedWakppuballs   UserWakppuball[]   @relation("OwnedWakppuballs")
-  acquiredSources    UserWakppuball[]   @relation("AcquiredFromUser")
-  matchesAsA         MatchHistory[]     @relation("MatchUserA")
-  matchesAsB         MatchHistory[]     @relation("MatchUserB")
+  id                       BigInt                    @id @default(autoincrement())
+  username                 String                    @unique @db.VarChar(20)
+  passwordHash             String                    @map("password_hash") @db.VarChar(255)
+  totalAcquiredCount       Int                       @default(0) @map("total_acquired_count")
+  createdAt                DateTime                  @default(now()) @map("created_at")
+  createdModels            WakppuballModel[]         @relation("CreatedModels")
+  ownedWakppuballs         UserWakppuball[]          @relation("OwnedWakppuballs")
+  acquiredSources          UserWakppuball[]          @relation("AcquiredFromUser")
+  matchesAsA               MatchHistory[]            @relation("MatchUserA")
+  matchesAsB               MatchHistory[]            @relation("MatchUserB")
+  locationVerificationLogs LocationVerificationLog[]
 
   @@map("users")
 }
@@ -74,6 +76,17 @@ model MatchHistory {
   @@map("match_history")
 }
 
+model LocationVerificationLog {
+  id        BigInt   @id @default(autoincrement())
+  userId    BigInt   @map("user_id")
+  passed    Boolean
+  checkedAt DateTime @default(now()) @map("checked_at")
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@index([userId, checkedAt])
+  @@map("location_verification_logs")
+}
+
 enum AcquiredType {
   CREATED
   MATCHED
@@ -82,4 +95,25 @@ enum AcquiredType {
 enum OwnedWakppuballStatus {
   ACTIVE
   CONSUMED
+}
+
+model MatchingQueueEntry {
+  id                    BigInt              @id @default(autoincrement())
+  userId                BigInt              @map("user_id")
+  wakppuballOwnedId     BigInt              @map("wakppuball_owned_id")
+  status                MatchingQueueStatus @default(WAITING)
+  matchHistoryId        BigInt?             @map("match_history_id")
+  receivedWakppuballId  BigInt?             @map("received_wakppuball_id")
+  enteredAt             DateTime            @default(now()) @map("entered_at")
+  updatedAt             DateTime            @updatedAt @map("updated_at")
+
+  @@index([userId, status, enteredAt])
+  @@index([status, enteredAt])
+  @@map("matching_queue_entries")
+}
+
+enum MatchingQueueStatus {
+  WAITING
+  MATCHED
+  CANCELLED
 }

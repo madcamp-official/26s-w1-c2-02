@@ -112,6 +112,17 @@ wakppuballsRouter.post(
         }
       });
 
+      await tx.user.update({
+        where: {
+          id: ownerUserId
+        },
+        data: {
+          totalAcquiredCount: {
+            increment: 1
+          }
+        }
+      });
+
       return { model, owned };
     });
 
