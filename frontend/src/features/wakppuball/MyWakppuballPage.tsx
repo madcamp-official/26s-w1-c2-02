@@ -377,6 +377,27 @@ export function MyWakppuballPage() {
     load();
   }, [load]);
 
+  // Recovers a queue/match entry that outlived a reload (or the bug below,
+  // where a real WAITING entry existed server-side but the sheet showing its
+  // cancel button had been lost client-side) — otherwise it's invisible until
+  // the user hits "매칭하기" again and immediately gets ALREADY_IN_QUEUE with
+  // no way back to a cancel button.
+  useEffect(() => {
+    (async () => {
+      try {
+        const result = await getMatchStatus();
+        if (result.status !== 'NONE') {
+          setMatchOpen(true);
+        }
+        await applyMatchResult(result);
+      } catch {
+        // Best-effort: worst case the user just doesn't see a stale queue
+        // entry on load and can start fresh.
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   useEffect(() => {
     if (matchView.kind !== 'waiting') {
       return undefined;
@@ -541,6 +562,14 @@ export function MyWakppuballPage() {
       const result = await enterMatchQueue(location);
       await applyMatchResult(result);
     } catch (error) {
+      if (error instanceof ApiError && error.code === 'ALREADY_IN_QUEUE') {
+        // A duplicate click (or a stale WAITING entry from before) raced
+        // ahead of this one — recover into the real waiting/matched state
+        // (with its cancel button) instead of a dead-end error message that
+        // can never reach it again.
+        await checkMatchStatus();
+        return;
+      }
       setMatchView({ kind: 'error', message: messageForMatchError(error) });
     }
   }
@@ -719,7 +748,11 @@ export function MyWakppuballPage() {
       </section>
 
       {view.kind === 'success' && (
-        <button className="match-button" type="button" onClick={handleStartMatch}>
+        // Fixed-position, so it stays clickable underneath the sheet unless
+        // explicitly disabled — without this, mashing it while a match is
+        // already in flight raced two enterMatchQueue calls against each
+        // other and could strand the UI on a dead-end ALREADY_IN_QUEUE error.
+        <button className="match-button" type="button" onClick={handleStartMatch} disabled={matchOpen}>
           매칭하기
         </button>
       )}
