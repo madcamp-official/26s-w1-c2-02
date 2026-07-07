@@ -98,51 +98,34 @@ collectionRouter.post(
       }
 
       if (target.isMain) {
-        return { mainWakppuballId: target.id, previousMainConsumed: false, consumedWakppuballId: null };
+        return { mainWakppuballId: target.id };
       }
 
-      const previousMain = await tx.userWakppuball.findFirst({
+      // Stepping down as main never consumes a wakppuball, regardless of
+      // remainingBreakCount — 0 means interaction-locked, not gone. It stays
+      // ACTIVE and in the collection; only unmained here.
+      await tx.userWakppuball.updateMany({
         where: {
           ownerUserId,
           isMain: true,
           status: 'ACTIVE'
+        },
+        data: {
+          isMain: false
         }
       });
-
-      let previousMainConsumed = false;
-      let consumedWakppuballId: bigint | null = null;
-
-      if (previousMain) {
-        if (previousMain.remainingBreakCount <= 0) {
-          await tx.userWakppuball.update({
-            where: { id: previousMain.id },
-            data: { isMain: false, status: 'CONSUMED', consumedAt: new Date() }
-          });
-          previousMainConsumed = true;
-          consumedWakppuballId = previousMain.id;
-        } else {
-          await tx.userWakppuball.update({
-            where: { id: previousMain.id },
-            data: { isMain: false }
-          });
-        }
-      }
 
       await tx.userWakppuball.update({
         where: { id: target.id },
         data: { isMain: true }
       });
 
-      return { mainWakppuballId: target.id, previousMainConsumed, consumedWakppuballId };
+      return { mainWakppuballId: target.id };
     });
 
     res.json({
       ok: true,
-      mainWakppuballId: result.mainWakppuballId.toString(),
-      previousMainConsumed: result.previousMainConsumed,
-      ...(result.consumedWakppuballId !== null
-        ? { consumedWakppuballId: result.consumedWakppuballId.toString() }
-        : {})
+      mainWakppuballId: result.mainWakppuballId.toString()
     });
   })
 );

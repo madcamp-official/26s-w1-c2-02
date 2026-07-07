@@ -20,7 +20,6 @@ type Tx = Prisma.TransactionClient;
 type OwnedWithModel = UserWakppuball & { model: WakppuballModel };
 
 const matchingQueueSchema = z.object({
-  wakppuballOwnedId: z.string().regex(/^\d+$/).optional(),
   latitude: z.number().min(-90).max(90).optional(),
   longitude: z.number().min(-180).max(180).optional()
 });
@@ -72,43 +71,37 @@ async function recordLocationVerification(
   });
 }
 
-async function findSelectedWakppuball(
+// Matching always trades the caller's own created wakppuball — never
+// whatever's currently set as main (that's a display/interaction choice,
+// decoupled from identity in a trade). Each user has exactly one CREATED
+// ball (the create UI only ever offers to make one), so no id/selection
+// param is needed. remainingBreakCount is deliberately not checked here —
+// matching works regardless of count, and refills it on success below.
+async function findOwnCreatedWakppuball(
   tx: Tx,
-  ownerUserId: bigint,
-  wakppuballOwnedId?: string
+  ownerUserId: bigint
 ): Promise<OwnedWithModel> {
-  const selected = wakppuballOwnedId
-    ? await tx.userWakppuball.findFirst({
-        where: {
-          id: BigInt(wakppuballOwnedId),
-          ownerUserId
-        },
-        include: {
-          model: true
-        }
-      })
-    : await tx.userWakppuball.findFirst({
-        where: {
-          ownerUserId,
-          isMain: true
-        },
-        include: {
-          model: true
-        },
-        orderBy: {
-          acquiredAt: 'desc'
-        }
-      });
+  const selected = await tx.userWakppuball.findFirst({
+    where: {
+      ownerUserId,
+      acquiredType: 'CREATED'
+    },
+    // The create UI only ever offers to make one, but nothing at the DB
+    // level enforces that — pick deterministically (the original) in case
+    // more than one ever exists.
+    orderBy: {
+      acquiredAt: 'asc'
+    },
+    include: {
+      model: true
+    }
+  });
 
   if (!selected) {
     throw new ApiError(
-      wakppuballOwnedId ? 404 : 400,
-      wakppuballOwnedId
-        ? 'OWNED_WAKPPUBALL_NOT_FOUND'
-        : 'MAIN_WAKPPUBALL_REQUIRED',
-      wakppuballOwnedId
-        ? '내 컬렉션에 없는 왁뿌볼입니다.'
-        : '매칭하려면 대표 왁뿌볼이 필요합니다.'
+      400,
+      'MAIN_WAKPPUBALL_REQUIRED',
+      '매칭하려면 왁뿌볼을 먼저 만들어야 합니다.'
     );
   }
 
@@ -117,14 +110,6 @@ async function findSelectedWakppuball(
       409,
       'WAKPPUBALL_CONSUMED',
       '이미 소멸된 왁뿌볼입니다.'
-    );
-  }
-
-  if (selected.remainingBreakCount <= 0) {
-    throw new ApiError(
-      400,
-      'BREAK_COUNT_REQUIRED',
-      '남은 뿌시기 횟수가 있는 왁뿌볼만 매칭할 수 있습니다.'
     );
   }
 
@@ -160,7 +145,7 @@ async function findValidWaitingEntry(
       }
     });
 
-    if (selectedWakppuball && selectedWakppuball.remainingBreakCount > 0) {
+    if (selectedWakppuball) {
       return { entry, selectedWakppuball };
     }
 
@@ -333,11 +318,7 @@ matchingRouter.post(
     }
 
     const result = await prisma.$transaction(async (tx) => {
-      const selectedWakppuball = await findSelectedWakppuball(
-        tx,
-        ownerUserId,
-        body.wakppuballOwnedId
-      );
+      const selectedWakppuball = await findOwnCreatedWakppuball(tx, ownerUserId);
 
       const existingWaitingEntry = await tx.matchingQueueEntry.findFirst({
         where: {

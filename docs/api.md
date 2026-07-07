@@ -15,9 +15,10 @@
 - 왁스 뿌시기처럼 횟수를 소모하는 행동만 서버에 API 요청을 보내 `remainingBreakCount`를 1 줄인다.
 - 깨진 정도, 눌린 위치, 조각별 손상 상태는 저장하지 않는다. 새로 접속하면 모델/프리셋 기준 상태로 다시 렌더링한다.
 - `remainingBreakCount`가 0이 되면, 그 세션에서 이미 확정된 조각 상태(만졌던 조각들)는 유지된 채로 더 이상 뿌시기 상호작용(터치해서 새 조각 뿌시기)이 불가능해진다. rotate/zoom은 계속 가능하다.
-- `remainingBreakCount`가 0이어도 컬렉션에서 사라지지 않는다. `CONSUMED`는 오직 (a) 0인 상태로 대표 왁뿌볼에서 다른 왁뿌볼로 교체될 때(`select-main`), 또는 (b) 같은 상대와 다시 매칭되어 리필될 때만 상태가 바뀐다 — 리필은 `ACTIVE`로 되돌리는 방향이다.
-- 같은 상대와 다시 매칭되면 새 컬렉션 항목을 만들지 않고, 그 상대에게서 받은 기존 왁뿌볼의 `remainingBreakCount`를 기본값(3)으로 리필한다. 유저당 상대 1명에 대해 컬렉션 항목은 항상 하나뿐이다.
-- 매칭이 성사되면 양쪽이 매칭에 사용한(보낸) 자신의 왁뿌볼도 `remainingBreakCount`가 기본값(3)으로 리셋된다.
+- `remainingBreakCount`가 0이어도 컬렉션에서 절대 사라지지 않는다. `select-main`으로 다른 왁뿌볼로 대표를 바꿔도 이전 대표는 `isMain`만 해제될 뿐 `CONSUMED`되지 않는다 — 자동으로 `CONSUMED`가 되는 경로는 없다.
+- 매칭은 항상 **호출자가 직접 만든(생성한) 고유 왁뿌볼**을 사용한다 — 지금 대표로 설정된 왁뿌볼이 무엇이든 상관없다. 대표(`isMain`)는 순수히 메인 화면에 무엇을 띄워서 상호작용할지 정하는 값이고, 매칭에 오가는 정체성은 항상 자신이 생성한 그 왁뿌볼이다.
+- 매칭은 `remainingBreakCount`와 무관하게 항상 진행된다(0이어도 매칭 가능). 매칭이 성사되면 양쪽이 매칭에 사용한 자신의 왁뿌볼의 `remainingBreakCount`가 기본값(3)으로 리셋된다.
+- 같은 상대와 다시 매칭되면 새 컬렉션 항목을 만들지 않고, 그 상대에게서 받은 기존 왁뿌볼의 `remainingBreakCount`를 기본값(3)으로 리필한다(이미 `CONSUMED`였어도 `ACTIVE`로 되돌아온다). 유저당 상대 1명에 대해 컬렉션 항목은 항상 하나뿐이다.
 
 ## 공통 에러 응답
 
@@ -129,6 +130,34 @@
 ```
 
 `totalAcquiredCount`: 지금까지 획득한 전체 누적 개수. `POST /wakppuballs` 성공 시 +1, 매칭 `MATCHED` 확정 시 양측 유저 모두 +1. `CONSUMED`되어 컬렉션에서 사라져도 감소하지 않는 단조 증가 값이다 (`collectionCount`는 현재 보유 중인 개수라 감소할 수 있지만, `totalAcquiredCount`는 감소하지 않는다).
+
+### 유저네임 수정
+
+`PATCH /users/me`
+
+```json
+{
+  "username": "newname"
+}
+```
+
+`username` 규칙은 회원가입과 동일(`^[a-zA-Z0-9_]+$`, 2~20자).
+
+```json
+{
+  "user": {
+    "id": "1",
+    "username": "newname"
+  }
+}
+```
+
+주요 에러:
+
+| Status | code | 상황 |
+|---|---|---|
+| 400 | `VALIDATION_ERROR` | username 형식 위반 |
+| 409 | `USERNAME_ALREADY_EXISTS` | 이미 사용 중인 유저네임 |
 
 ## 왁뿌볼 Wakppuballs
 
@@ -269,6 +298,32 @@
 }
 ```
 
+### 내 왁뿌볼 이름 수정
+
+`PATCH /wakppuballs/me/created`
+
+호출자가 직접 생성한 고유 왁뿌볼의 이름만 바꾼다(`:ownedId` 없음 — 유저당 항상 하나뿐이라 특정할 필요가 없다). 매칭으로 받은 왁뿌볼은 이 엔드포인트로 바꿀 수 없다 — 원본 창작자와 모델 row를 공유하므로, 그쪽 이름까지 같이 바뀌는 걸 막기 위함이다.
+
+```json
+{
+  "name": "새 이름"
+}
+```
+
+```json
+{
+  "ok": true,
+  "ownedId": "10",
+  "name": "새 이름"
+}
+```
+
+주요 에러:
+
+| Status | code | 상황 |
+|---|---|---|
+| 404 | `OWNED_WAKPPUBALL_NOT_FOUND` | 생성한 왁뿌볼이 없음 |
+
 ### 왁뿌볼 뿌시기 카운트 차감
 
 `POST /wakppuballs/:ownedId/break`
@@ -375,13 +430,11 @@
 ```json
 {
   "ok": true,
-  "mainWakppuballId": "11",
-  "previousMainConsumed": true,
-  "consumedWakppuballId": "10"
+  "mainWakppuballId": "11"
 }
 ```
 
-기존 대표 왁뿌볼의 `remainingBreakCount`가 0이면, 새 대표 왁뿌볼로 교체하는 순간 기존 대표 왁뿌볼은 `CONSUMED` 처리되어 컬렉션에서 사라진다.
+기존 대표 왁뿌볼은 `remainingBreakCount`와 무관하게 `isMain`만 해제되고 컬렉션에 그대로 남는다 — 이 요청으로 무언가 `CONSUMED`되는 경우는 없다.
 
 주요 에러:
 
@@ -396,11 +449,10 @@
 
 `POST /matching/queue`
 
-요청 바디에 `latitude`/`longitude`(number)가 필수다. 위치 동의 기반 매칭이므로 캠퍼스 허용 반경 밖이거나 좌표가 없으면 대기열 진입 자체가 거부된다. `accuracy` 값은 받지 않는다.
+요청 바디에 `latitude`/`longitude`(number)가 필수다. 위치 동의 기반 매칭이므로 캠퍼스 허용 반경 밖이거나 좌표가 없으면 대기열 진입 자체가 거부된다. `accuracy` 값은 받지 않는다. 어떤 왁뿌볼을 보낼지 고르는 파라미터는 없다 — 항상 호출자가 생성한 고유 왁뿌볼로 자동 결정된다(위 "MVP 상호작용 규칙" 참고).
 
 ```json
 {
-  "wakppuballOwnedId": "10",
   "latitude": 37.5665,
   "longitude": 126.9780
 }
@@ -458,8 +510,7 @@
 |---|---|---|
 | 400 | `LOCATION_REQUIRED` | `latitude`/`longitude` 미제공 |
 | 400 | `OUTSIDE_CAMPUS_AREA` | 좌표는 있으나 캠퍼스 허용 반경 밖 |
-| 400 | `MAIN_WAKPPUBALL_REQUIRED` | 저장된 왁뿌볼이 없어 매칭 불가 |
-| 400 | `BREAK_COUNT_REQUIRED` | 대표 왁뿌볼의 남은 뿌시기 횟수가 0이라 매칭 불가 |
+| 400 | `MAIN_WAKPPUBALL_REQUIRED` | 생성한 왁뿌볼이 없어 매칭 불가 |
 | 409 | `ALREADY_IN_QUEUE` | 이미 매칭 대기 중 |
 | 409 | `WAKPPUBALL_CONSUMED` | 이미 소멸된 왁뿌볼 |
 

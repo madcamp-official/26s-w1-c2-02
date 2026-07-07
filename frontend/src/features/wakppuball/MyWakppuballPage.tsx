@@ -4,13 +4,15 @@ import {
   useLayoutEffect,
   useRef,
   useState,
+  type FormEvent,
   type MouseEvent,
   type ReactNode
 } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ApiError } from '../../shared/api/http';
 import { useAuth } from '../../shared/auth/AuthContext';
-import { fetchMe, type MeResponse } from '../auth/authApi';
+import { validateUsername } from '../../shared/validation/credentials';
+import { fetchMe, renameUsername, type MeResponse } from '../auth/authApi';
 import { getCollection, selectMainWakppuball, type CollectionItem } from '../collection/collectionApi';
 import {
   cancelMatchQueue,
@@ -20,7 +22,12 @@ import {
   type MatchQueueBody,
   type MatchStatusResult
 } from '../matching/matchingApi';
-import { createWakppuball, getMainWakppuball, type MainWakppuball } from './wakppuballApi';
+import {
+  createWakppuball,
+  getMainWakppuball,
+  renameCreatedWakppuball,
+  type MainWakppuball
+} from './wakppuballApi';
 import { DEFAULT_CUSTOMIZATION, DEFAULT_FRACTURE } from './wakppuballDefaults';
 import { WakppuballView } from './WakppuballView';
 // The main-screen interaction stage is the one place a wakppuball renders in 3D
@@ -123,9 +130,7 @@ function messageForMatchError(error: unknown): string {
       case 'OUTSIDE_CAMPUS_AREA':
         return '캠퍼스 안에서만 매칭할 수 있어요.';
       case 'MAIN_WAKPPUBALL_REQUIRED':
-        return '매칭하려면 대표 왁뿌볼이 필요합니다.';
-      case 'BREAK_COUNT_REQUIRED':
-        return '남은 뿌시기 횟수가 있는 왁뿌볼만 매칭할 수 있어요.';
+        return '매칭하려면 왁뿌볼을 먼저 만들어야 합니다.';
       case 'ALREADY_IN_QUEUE':
         return '이미 매칭 대기 중이에요.';
       default:
@@ -185,6 +190,15 @@ function IconClose() {
     <svg viewBox="0 0 24 24" aria-hidden="true">
       <path d="m6.75 6.75 10.5 10.5" />
       <path d="m17.25 6.75-10.5 10.5" />
+    </svg>
+  );
+}
+
+function IconEdit() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M15.5 5.5 18.5 8.5" />
+      <path d="M4.75 19.25 5.5 15.75 15.25 6 18 8.75 8.25 18.5Z" />
     </svg>
   );
 }
@@ -269,6 +283,14 @@ export function MyWakppuballPage() {
   const [collectionView, setCollectionView] = useState<AsyncState<CollectionItem[]>>({ kind: 'idle' });
   const [selectingMain, setSelectingMain] = useState(false);
   const [selectMainError, setSelectMainError] = useState<string | null>(null);
+  const [editingBallName, setEditingBallName] = useState(false);
+  const [ballNameDraft, setBallNameDraft] = useState('');
+  const [renamingBall, setRenamingBall] = useState(false);
+  const [renameBallError, setRenameBallError] = useState<string | null>(null);
+  const [editingUsername, setEditingUsername] = useState(false);
+  const [usernameDraft, setUsernameDraft] = useState('');
+  const [renamingUsername, setRenamingUsername] = useState(false);
+  const [renameUsernameError, setRenameUsernameError] = useState<string | null>(null);
   const [matchOpen, setMatchOpen] = useState(false);
   const [matchView, setMatchView] = useState<MatchView>({ kind: 'idle' });
   const [popOrigin, setPopOrigin] = useState<PopOrigin | null>(null);
@@ -403,6 +425,71 @@ export function MyWakppuballPage() {
       setSelectMainError(message);
     } finally {
       setSelectingMain(false);
+    }
+  }
+
+  function startEditingBallName() {
+    if (view.kind !== 'success') {
+      return;
+    }
+    setRenameBallError(null);
+    setBallNameDraft(view.wakppuball.name);
+    setEditingBallName(true);
+  }
+
+  async function handleSubmitBallName(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const trimmed = ballNameDraft.trim();
+    if (!trimmed) {
+      setRenameBallError('이름을 입력해주세요.');
+      return;
+    }
+
+    setRenameBallError(null);
+    setRenamingBall(true);
+    try {
+      await renameCreatedWakppuball(trimmed);
+      setEditingBallName(false);
+      await load();
+    } catch (error) {
+      const message = error instanceof ApiError ? error.message : '이름을 변경하지 못했습니다.';
+      setRenameBallError(message);
+    } finally {
+      setRenamingBall(false);
+    }
+  }
+
+  function startEditingUsername() {
+    if (profileView.kind !== 'success') {
+      return;
+    }
+    setRenameUsernameError(null);
+    setUsernameDraft(profileView.data.username);
+    setEditingUsername(true);
+  }
+
+  async function handleSubmitUsername(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const trimmed = usernameDraft.trim();
+    const validationError = validateUsername(trimmed);
+    if (validationError) {
+      setRenameUsernameError(validationError);
+      return;
+    }
+
+    setRenameUsernameError(null);
+    setRenamingUsername(true);
+    try {
+      await renameUsername(trimmed);
+      setEditingUsername(false);
+      setProfileView({ kind: 'loading' });
+      const { user } = await fetchMe();
+      setProfileView({ kind: 'success', data: user });
+    } catch (error) {
+      const message = error instanceof ApiError ? error.message : '유저네임을 변경하지 못했습니다.';
+      setRenameUsernameError(message);
+    } finally {
+      setRenamingUsername(false);
     }
   }
 
@@ -597,7 +684,34 @@ export function MyWakppuballPage() {
               remainingBreakCount={view.wakppuball.remainingBreakCount}
             />
             <div className="main-ball-caption">
-              <p>{view.wakppuball.name}</p>
+              {editingBallName ? (
+                <form className="inline-edit-form" onSubmit={handleSubmitBallName}>
+                  <input
+                    value={ballNameDraft}
+                    onChange={(event) => setBallNameDraft(event.target.value)}
+                    maxLength={50}
+                    autoFocus
+                    disabled={renamingBall}
+                    aria-label="왁뿌볼 이름"
+                  />
+                  <button type="submit" disabled={renamingBall}>
+                    저장
+                  </button>
+                  <button type="button" onClick={() => setEditingBallName(false)} disabled={renamingBall}>
+                    취소
+                  </button>
+                </form>
+              ) : (
+                <p>
+                  {view.wakppuball.name}
+                  {view.wakppuball.acquiredType === 'CREATED' && (
+                    <button type="button" className="icon-button-inline" aria-label="왁뿌볼 이름 수정" onClick={startEditingBallName}>
+                      <IconEdit />
+                    </button>
+                  )}
+                </p>
+              )}
+              {renameBallError && <p role="alert">{renameBallError}</p>}
               <span>남은 뿌시기 횟수 {view.wakppuball.remainingBreakCount}</span>
             </div>
           </>
@@ -636,7 +750,32 @@ export function MyWakppuballPage() {
                   <>
                     <div className="profile-card">
                       <span>유저네임</span>
-                      <strong>{profileView.data.username}</strong>
+                      {editingUsername ? (
+                        <form className="inline-edit-form" onSubmit={handleSubmitUsername}>
+                          <input
+                            value={usernameDraft}
+                            onChange={(event) => setUsernameDraft(event.target.value)}
+                            maxLength={20}
+                            autoFocus
+                            disabled={renamingUsername}
+                            aria-label="유저네임"
+                          />
+                          <button type="submit" disabled={renamingUsername}>
+                            저장
+                          </button>
+                          <button type="button" onClick={() => setEditingUsername(false)} disabled={renamingUsername}>
+                            취소
+                          </button>
+                        </form>
+                      ) : (
+                        <strong>
+                          {profileView.data.username}
+                          <button type="button" className="icon-button-inline" aria-label="유저네임 수정" onClick={startEditingUsername}>
+                            <IconEdit />
+                          </button>
+                        </strong>
+                      )}
+                      {renameUsernameError && <p role="alert">{renameUsernameError}</p>}
                     </div>
                     <div className="stat-grid">
                       <div>
