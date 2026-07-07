@@ -1,4 +1,10 @@
 import { apiRequest } from '../../shared/api/http';
+import type {
+  WakppuballAcquiredType,
+  WakppuballCustomization,
+  WakppuballFracture,
+  WakppuballStatus
+} from '../wakppuball/wakppuballTypes';
 
 // GET /collection item shape (matches backend subset; CONSUMED already excluded).
 export type CollectionItem = {
@@ -7,12 +13,13 @@ export type CollectionItem = {
   name: string;
   modelUrl: string | null;
   thumbnailUrl: string | null;
-  acquiredType: 'CREATED' | 'MATCHED';
-  // Present only when the ball records who it came from. Matched balls from the
-  // synchronous queue have no acquiredFrom (backend sets acquiredFromUserId null).
+  customization: WakppuballCustomization | null;
+  fracture: WakppuballFracture | null;
+  acquiredType: WakppuballAcquiredType;
+  // Present only when the ball records who it came from.
   acquiredFrom?: { id: string; username: string };
   remainingBreakCount: number;
-  status: 'ACTIVE' | 'CONSUMED';
+  status: WakppuballStatus;
   isMain: boolean;
   acquiredAt: string;
 };

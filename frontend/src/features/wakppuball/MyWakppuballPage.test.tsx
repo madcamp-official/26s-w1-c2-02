@@ -23,6 +23,13 @@ const sampleMain: MainWakppuball = {
   name: '내 첫 왁뿌볼',
   modelUrl: null,
   thumbnailUrl: '/thumb.png',
+  customization: {
+    outerColor: '#f3d35b',
+    innerColor: '#ffffff',
+    pattern: { type: 'preset', id: 'dots' },
+    shape: 'sphere'
+  },
+  fracture: { thicknessPreset: 'medium' },
   remainingBreakCount: 3,
   status: 'ACTIVE',
   acquiredType: 'CREATED',
@@ -80,6 +87,13 @@ describe('MyWakppuballPage — state matrix', () => {
       name: '내 첫 왁뿌볼',
       modelUrl: null,
       thumbnailUrl: '/thumb.png',
+      customization: {
+        outerColor: '#f3d35b',
+        innerColor: '#ffffff',
+        pattern: { type: 'preset', id: 'dots' },
+        shape: 'sphere'
+      },
+      fracture: { thicknessPreset: 'medium' },
       isMain: true,
       remainingBreakCount: 3,
       status: 'ACTIVE',

@@ -19,6 +19,7 @@ export type MeResponse = {
     username: string;
     mainWakppuballId: string | null;
     collectionCount: number;
+    totalAcquiredCount: number;
     createdAt: string;
   };
 };

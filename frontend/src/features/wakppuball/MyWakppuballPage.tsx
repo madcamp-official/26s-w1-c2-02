@@ -2,13 +2,21 @@ import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ApiError } from '../../shared/api/http';
 import { createWakppuball, getMainWakppuball, type MainWakppuball } from './wakppuballApi';
+import type { WakppuballCustomization, WakppuballFracture } from './wakppuballTypes';
 
 // Customization UI is out of scope this sprint — send a fixed value.
 // Kept as a top-level constant so it's easy to swap for real state later.
-const DEFAULT_CUSTOMIZATION = { bodyColor: '#f3d35b', face: 'smile', accessory: 'none' };
+const DEFAULT_CUSTOMIZATION: WakppuballCustomization = {
+  outerColor: '#f3d35b',
+  innerColor: '#ffffff',
+  pattern: { type: 'preset', id: 'dots' },
+  shape: 'sphere'
+};
+const DEFAULT_FRACTURE: WakppuballFracture = {
+  thicknessPreset: 'medium'
+};
 // Temporary 2D asset placeholder until real 3D model upload exists.
 const TEMP_WAKPPUBALL_ASSET = {
-  modelUrl: '/assets/temp-wakppuball.png',
   thumbnailUrl: '/assets/temp-wakppuball.png'
 };
 
@@ -54,9 +62,9 @@ export function MyWakppuballPage() {
     try {
       await createWakppuball({
         name: name.trim() || undefined,
-        modelUrl: TEMP_WAKPPUBALL_ASSET.modelUrl,
         thumbnailUrl: TEMP_WAKPPUBALL_ASSET.thumbnailUrl,
         customization: DEFAULT_CUSTOMIZATION,
+        fracture: DEFAULT_FRACTURE,
         setAsMain: true
       });
       // Saved + set as main → re-read the main ball and show it.
