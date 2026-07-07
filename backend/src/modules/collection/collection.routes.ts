@@ -61,6 +61,88 @@ collectionRouter.get(
   })
 );
 
-collectionRouter.post('/:ownedId/select-main', (_req, res) => {
-  res.status(501).json({ message: 'TODO: 대표 왁뿌볼 선택 구현' });
-});
+collectionRouter.post(
+  '/:ownedId/select-main',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    if (!req.user) {
+      throw new ApiError(401, 'UNAUTHORIZED', '로그인이 필요합니다.');
+    }
+
+    // @types/express@5 types params as `string | string[]` even though this
+    // project runs express@4 (single-segment params are always a string).
+    const ownedIdParam = req.params.ownedId;
+    const ownedId = Array.isArray(ownedIdParam) ? ownedIdParam[0] : ownedIdParam;
+
+    if (!ownedId || !/^\d+$/.test(ownedId)) {
+      throw new ApiError(404, 'OWNED_WAKPPUBALL_NOT_FOUND', '내 컬렉션에 없는 왁뿌볼입니다.');
+    }
+
+    const ownerUserId = BigInt(req.user.id);
+    const targetId = BigInt(ownedId);
+
+    const result = await prisma.$transaction(async (tx) => {
+      const target = await tx.userWakppuball.findFirst({
+        where: {
+          id: targetId,
+          ownerUserId
+        }
+      });
+
+      if (!target) {
+        throw new ApiError(404, 'OWNED_WAKPPUBALL_NOT_FOUND', '내 컬렉션에 없는 왁뿌볼입니다.');
+      }
+
+      if (target.status === 'CONSUMED') {
+        throw new ApiError(409, 'WAKPPUBALL_CONSUMED', '이미 소멸된 왁뿌볼입니다.');
+      }
+
+      if (target.isMain) {
+        return { mainWakppuballId: target.id, previousMainConsumed: false, consumedWakppuballId: null };
+      }
+
+      const previousMain = await tx.userWakppuball.findFirst({
+        where: {
+          ownerUserId,
+          isMain: true,
+          status: 'ACTIVE'
+        }
+      });
+
+      let previousMainConsumed = false;
+      let consumedWakppuballId: bigint | null = null;
+
+      if (previousMain) {
+        if (previousMain.remainingBreakCount <= 0) {
+          await tx.userWakppuball.update({
+            where: { id: previousMain.id },
+            data: { isMain: false, status: 'CONSUMED', consumedAt: new Date() }
+          });
+          previousMainConsumed = true;
+          consumedWakppuballId = previousMain.id;
+        } else {
+          await tx.userWakppuball.update({
+            where: { id: previousMain.id },
+            data: { isMain: false }
+          });
+        }
+      }
+
+      await tx.userWakppuball.update({
+        where: { id: target.id },
+        data: { isMain: true }
+      });
+
+      return { mainWakppuballId: target.id, previousMainConsumed, consumedWakppuballId };
+    });
+
+    res.json({
+      ok: true,
+      mainWakppuballId: result.mainWakppuballId.toString(),
+      previousMainConsumed: result.previousMainConsumed,
+      ...(result.consumedWakppuballId !== null
+        ? { consumedWakppuballId: result.consumedWakppuballId.toString() }
+        : {})
+    });
+  })
+);

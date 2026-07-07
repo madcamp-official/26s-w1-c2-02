@@ -23,7 +23,7 @@ This file holds only stable, rarely-changing information.
       matching/MatchingPage.tsx
       wakppuball/MyWakppuballPage.tsx
     shared/api/http.ts   # common fetch wrapper, handles Authorization header
-    assets/models/        # temporary 2D images / model resources
+    assets/models/index.ts  # shape -> GLB asset registry, see docs/3d-asset-contract.md
     App.tsx, main.tsx, styles.css
   ```
 - State management: no library yet, plain React state/context. Revisit if needed.
@@ -54,6 +54,7 @@ Learned by reading backend PRs — `docs/api.md` has repeatedly lagged the imple
 - **`GET /users/me`** includes `totalAcquiredCount`: a monotonically increasing lifetime count, +1 on `POST /wakppuballs` success and +1 for both users when a match reaches `MATCHED`. Unlike `collectionCount`, it does not decrease when a ball becomes `CONSUMED`.
 - **The main wakppuball is composed on the frontend.** `GET /wakppuballs/me/main` is unimplemented (501), so `wakppuballApi.getMainWakppuball()` derives it from `GET /users/me` (`mainWakppuballId`) + `GET /collection`. `getMainWakppuballViaEndpoint` is kept for a one-line revert once the backend ships the endpoint. (Temporary but currently active — see `docs/backlog.md`.)
 - **`POST /wakppuballs`**: all body fields optional; `setAsMain: true` re-points the main ball; response includes `modelUrl`/`thumbnailUrl`.
+- **`POST /collection/:ownedId/select-main`** is implemented (no longer a 501 stub). Selecting the already-main ball is a no-op. Otherwise the previous main is un-mained, and only marked `CONSUMED` (removed from the collection) if its `remainingBreakCount` was already 0 — otherwise it just stays in the collection, no longer main.
 - Error codes in use include `MAIN_WAKPPUBALL_REQUIRED`, `BREAK_COUNT_REQUIRED`, `OWNED_WAKPPUBALL_NOT_FOUND` beyond the common ones in `docs/api.md`.
 
 ## Frontend Dev Setup (stable)
@@ -74,8 +75,9 @@ Every screen must handle these 4 states:
 ## Coding Conventions (always apply)
 
 - Use API response field names as-is for component props/variables (`remainingBreakCount` stays `remainingBreakCount`, no renaming)
-- Declare colors/spacing as CSS variables in `styles.css` and reference them
+- Declare colors/spacing as CSS variables in `styles.css` and reference them — corner radius (`--radius-sm` … `--radius-2xl`, `--radius-pill`) and glass-surface tokens (`--glass-fill`, `--glass-border`, `--glass-blur`, etc.) are the established design tokens; reuse them for new UI instead of hardcoding new values
 - Extract shared UI (buttons/inputs/modals/cards) into reusable components instead of rebuilding per screen
+- Render a wakppuball via `WakppuballView` (`frontend/src/features/wakppuball/WakppuballView.tsx`), not `WakppuballVisual` directly — it renders the real 3D model when one is registered for the shape in `assets/models/index.ts`, falling back to the CSS ball (`WakppuballVisual`) otherwise. See `docs/3d-asset-contract.md` for how to register a delivered model. `three`/`@react-three/*` are only imported from `Wakppuball3DCanvas.tsx`, loaded via `React.lazy()` — keep any new 3D code there too, don't import those packages from a file that's always in the main bundle (they add ~250kB gzipped).
 - Write styles mobile-first (small screen sizes first)
 - Never implement features outside the current scope — always check the include/exclude list in `docs/current-sprint.md`
 
