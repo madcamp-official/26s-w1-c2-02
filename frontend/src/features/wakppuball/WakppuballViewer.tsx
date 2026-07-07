@@ -2,6 +2,7 @@ import { Component, Suspense, useEffect, useMemo, useRef, useState, type ReactNo
 import { Canvas, useFrame, type ThreeEvent } from '@react-three/fiber';
 import { Html, OrbitControls, useGLTF } from '@react-three/drei';
 import { Matrix4, Quaternion, Vector3, type Object3D } from 'three';
+import { breakWakppuball, sessionEndMainWakppuball } from './wakppuballApi';
 // Vite resolves this to a served asset URL. The GLB is Draco-compressed;
 // useGLTF pulls the Draco decoder from the gstatic CDN by default (needs network
 // in dev). If we ever need fully-offline dev, self-host the decoder in /public.
@@ -244,7 +245,7 @@ class ModelErrorBoundary extends Component<{ children: ReactNode }, { failed: bo
   }
 }
 
-export function WakppuballViewer() {
+export function WakppuballViewer({ ownedId }: { ownedId: string }) {
   // Session-local popped set. Kept here (lifted above the Canvas) because Phase 4
   // needs "was anything popped?" to fire the break API once on unmount.
   const [poppedPieces, setPoppedPieces] = useState<Set<string>>(() => new Set());
@@ -257,6 +258,46 @@ export function WakppuballViewer() {
       return next;
     });
   }
+
+  // Phase 4: rotate/zoom/press-and-hold never call the server (docs/api.md) —
+  // only a piece actually popping consumes a break. Fire once, iff anything
+  // popped this session. A ref (not `poppedPieces` itself) is read here so
+  // callers don't need to re-run — and therefore don't re-fire the request —
+  // on every pop.
+  const poppedPiecesRef = useRef(poppedPieces);
+  poppedPiecesRef.current = poppedPieces;
+  const reportedRef = useRef(false);
+  function reportBreakIfNeeded(keepalive: boolean) {
+    if (reportedRef.current || poppedPiecesRef.current.size === 0) return;
+    reportedRef.current = true;
+    // Best-effort: the break endpoint doesn't change what's already rendered
+    // (this viewer is going away), so a failure here has nothing to roll back.
+    // remainingBreakCount/CONSUMED handling lands with the UI that surfaces them.
+    breakWakppuball(ownedId, { keepalive }).catch((error) => {
+      console.error('Failed to report wakppuball break', error);
+    });
+  }
+
+  // A normal in-app unmount (navigating elsewhere, or `key` forcing a remount
+  // when the main ball changes — see MyWakppuballPage.tsx) fires the cleanup
+  // below. A real tab close/refresh never reaches React's unmount at all — the
+  // page just dies — so `pagehide` is the actual signal there (docs/api.md
+  // calls this out explicitly), and `keepalive` lets the request outlive it.
+  // `pagehide` also covers logout-by-navigation the same way normal unmount
+  // does, so it isn't wired separately for that case.
+  useEffect(() => {
+    function handlePageHide() {
+      reportBreakIfNeeded(true);
+      sessionEndMainWakppuball('PAGE_HIDE', { keepalive: true }).catch((error) => {
+        console.error('Failed to report wakppuball session end', error);
+      });
+    }
+    window.addEventListener('pagehide', handlePageHide);
+    return () => {
+      window.removeEventListener('pagehide', handlePageHide);
+      reportBreakIfNeeded(false);
+    };
+  }, [ownedId]);
 
   return (
     <div className="wakppuball-viewer" style={{ position: 'relative' }}>

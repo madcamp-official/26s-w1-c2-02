@@ -20,9 +20,15 @@ import {
   type MatchQueueBody,
   type MatchStatusResult
 } from '../matching/matchingApi';
-import { createWakppuball, getMainWakppuball, type MainWakppuball } from './wakppuballApi';
+import { createWakppuball, getMainWakppuball, sessionEndMainWakppuball, type MainWakppuball } from './wakppuballApi';
 import { DEFAULT_CUSTOMIZATION, DEFAULT_FRACTURE } from './wakppuballDefaults';
 import { WakppuballView } from './WakppuballView';
+// The main-screen interaction stage is the one place a wakppuball renders in 3D
+// (see docs/3d-interaction.md) with piece-level crack/press/squash; collection
+// tiles, the create preview, and match results stay on WakppuballView's CSS
+// fallback (SHAPE_MODEL_ASSETS is intentionally left empty so those call sites
+// don't pick up a 3D render).
+import { WakppuballViewer } from './WakppuballViewer';
 import type {
   WakppuballCustomization,
   WakppuballFracture,
@@ -378,6 +384,11 @@ export function MyWakppuballPage() {
   }
 
   function handleLogout() {
+    // Fire before signOut() clears the token — apiRequest reads it synchronously
+    // from storage, so this would go out unauthenticated afterward.
+    sessionEndMainWakppuball('LOGOUT').catch((error) => {
+      console.error('Failed to report wakppuball session end', error);
+    });
     signOut();
     navigate('/login', { replace: true });
   }
@@ -547,7 +558,12 @@ export function MyWakppuballPage() {
 
         {view.kind === 'success' && (
           <>
-            <WakppuballView name={view.wakppuball.name} customization={view.wakppuball.customization} />
+            {/* key forces a real mount/unmount per ball: switching main via the
+                collection changes `ownedId` but keeps this JSX slot, and without
+                a key React would just update props on the same instance — the
+                old ball's popped pieces (and the effect that reports them once
+                per session, see WakppuballViewer.tsx) would leak into the new one. */}
+            <WakppuballViewer key={view.wakppuball.ownedId} ownedId={view.wakppuball.ownedId} />
             <div className="main-ball-caption">
               <p>{view.wakppuball.name}</p>
               <span>남은 뿌시기 횟수 {view.wakppuball.remainingBreakCount}</span>
