@@ -1,6 +1,37 @@
 :root {
+  /* Lava-lamp background blobs (screen-blended over the purple base) */
+  --lava-pink: rgba(250, 93, 166, 0.72);
+  --lava-violet: rgba(151, 84, 255, 0.78);
+  --lava-magenta: rgba(214, 64, 208, 0.62);
+  --lava-cyan: rgba(72, 219, 255, 0.42);
+  --lava-indigo: rgba(110, 60, 255, 0.72);
+
+  /* Corner scale. Apple's continuous "squircle" corner has no exact CSS
+     equivalent, so this approximates it with generous radii plus a
+     concentric rule for nested elements: inner radius = outer radius -
+     the padding between them (e.g. segmented-control 14px / 4px padding
+     -> segment-button 10px). */
+  --radius-2xl: 30px;
+  --radius-xl: 22px;
+  --radius-lg: 16px;
+  --radius-md: 14px;
+  --radius-sm: 10px;
+  --radius-pill: 999px;
+
+  /* Liquid-glass surface tokens: translucent fill + a bright inset rim on
+     the top edge (specular highlight) instead of a flat border. */
+  --glass-fill: linear-gradient(180deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.05));
+  --glass-fill-strong: linear-gradient(180deg, rgba(255, 255, 255, 0.26), rgba(255, 255, 255, 0.1));
+  --glass-fill-soft: rgba(255, 255, 255, 0.1);
+  --glass-border: rgba(255, 255, 255, 0.3);
+  --glass-border-soft: rgba(255, 255, 255, 0.2);
+  --glass-highlight: rgba(255, 255, 255, 0.45);
+  --glass-blur: 26px;
+  --glass-blur-soft: 18px;
+  --shadow-elevated: 0 26px 70px rgba(0, 0, 0, 0.38);
+  --shadow-soft: 0 14px 40px rgba(0, 0, 0, 0.24);
+
   color: #fdfaff;
-  background: #16001f;
   font-family:
     "Pretendard",
     "SUIT",
@@ -19,15 +50,12 @@
   box-sizing: border-box;
 }
 
+/* The base gradient lives on html so it propagates to the canvas — body must
+   stay background-free, otherwise it paints over the z-index:-1 blob layers. */
 html {
   min-height: 100%;
-}
-
-body {
-  min-height: 100%;
-  margin: 0;
-  overflow-x: hidden;
-  background:
+  background-color: #16001f;
+  background-image:
     linear-gradient(125deg, rgba(30, 0, 50, 1), rgba(90, 26, 144, 0.98), rgba(31, 0, 61, 1)),
     linear-gradient(65deg, rgba(250, 93, 166, 0.34), transparent 42%),
     linear-gradient(210deg, rgba(72, 219, 255, 0.2), transparent 40%);
@@ -35,19 +63,41 @@ body {
   animation: dreamWave 18s ease-in-out infinite;
 }
 
-body::before {
+body {
+  min-height: 100%;
+  margin: 0;
+  overflow-x: hidden;
+}
+
+/* Two oversized blob layers drifting at different periods — their relative
+   motion makes the blobs pass and merge like a lava lamp. Oversized inset
+   keeps edges hidden while the layers translate/rotate. */
+body::before,
+body::after {
   position: fixed;
-  inset: -20%;
+  inset: -28%;
   z-index: -1;
   pointer-events: none;
   content: "";
+  mix-blend-mode: screen;
+}
+
+body::before {
   background:
-    linear-gradient(115deg, transparent 0 18%, rgba(255, 255, 255, 0.1) 24%, transparent 34%),
-    linear-gradient(245deg, transparent 0 24%, rgba(118, 230, 255, 0.12) 32%, transparent 46%);
-  background-size: 160% 160%;
-  filter: blur(22px);
-  opacity: 0.8;
-  animation: waveVeil 13s ease-in-out infinite alternate;
+    radial-gradient(circle 42vmin at 18% 74%, var(--lava-pink) 0 44%, transparent 88%),
+    radial-gradient(circle 48vmin at 76% 20%, var(--lava-violet) 0 42%, transparent 88%),
+    radial-gradient(circle 34vmin at 56% 92%, var(--lava-magenta) 0 46%, transparent 88%);
+  filter: blur(28px);
+  animation: lavaDriftA 34s ease-in-out infinite alternate;
+}
+
+body::after {
+  background:
+    radial-gradient(circle 36vmin at 24% 16%, var(--lava-cyan) 0 40%, transparent 88%),
+    radial-gradient(circle 46vmin at 84% 68%, var(--lava-indigo) 0 44%, transparent 88%),
+    radial-gradient(circle 30vmin at 46% 48%, var(--lava-pink) 0 38%, transparent 88%);
+  filter: blur(40px);
+  animation: lavaDriftB 47s ease-in-out infinite alternate;
 }
 
 button,
@@ -81,12 +131,64 @@ a {
   }
 }
 
-@keyframes waveVeil {
+@keyframes lavaDriftA {
+  0% {
+    transform: translate3d(-5%, 4%, 0) rotate(-4deg) scale(1);
+  }
+  50% {
+    transform: translate3d(4%, -7%, 0) rotate(3deg) scale(1.14);
+  }
+  100% {
+    transform: translate3d(-2%, 7%, 0) rotate(-2deg) scale(1.05);
+  }
+}
+
+@keyframes lavaDriftB {
+  0% {
+    transform: translate3d(5%, -5%, 0) rotate(4deg) scale(1.1);
+  }
+  50% {
+    transform: translate3d(-6%, 6%, 0) rotate(-5deg) scale(0.94);
+  }
+  100% {
+    transform: translate3d(3%, -8%, 0) rotate(2deg) scale(1.16);
+  }
+}
+
+@keyframes backdropFade {
   from {
-    transform: translate3d(-2%, -1%, 0) scale(1);
+    opacity: 0;
   }
   to {
-    transform: translate3d(3%, 2%, 0) scale(1.05);
+    opacity: 1;
+  }
+}
+
+@keyframes sheetPop {
+  from {
+    opacity: 0;
+    transform: scale(0.04);
+    filter: blur(8px);
+  }
+  60% {
+    opacity: 1;
+    filter: blur(0);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+    filter: blur(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body,
+  body::before,
+  body::after,
+  .modal-backdrop,
+  .modal-sheet,
+  .match-sheet {
+    animation: none;
   }
 }
 
@@ -108,11 +210,15 @@ a {
 .create-panel,
 .modal-sheet,
 .match-sheet {
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  border-radius: 8px;
-  background: rgba(27, 12, 48, 0.72);
-  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.28);
-  backdrop-filter: blur(22px);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-xl);
+  background: var(--glass-fill), rgba(27, 12, 48, 0.58);
+  box-shadow:
+    inset 0 1px 0 var(--glass-highlight),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.18),
+    var(--shadow-elevated);
+  backdrop-filter: blur(var(--glass-blur)) saturate(150%);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(150%);
 }
 
 .panel {
@@ -142,12 +248,20 @@ a {
   width: 48px;
   height: 48px;
   place-items: center;
-  border: 1px solid rgba(255, 255, 255, 0.22);
-  border-radius: 50%;
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-pill);
   color: #fff;
-  background: rgba(255, 255, 255, 0.12);
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.22);
-  backdrop-filter: blur(18px);
+  background: var(--glass-fill-strong);
+  box-shadow:
+    inset 0 1px 0 var(--glass-highlight),
+    var(--shadow-soft);
+  backdrop-filter: blur(var(--glass-blur-soft)) saturate(160%);
+  -webkit-backdrop-filter: blur(var(--glass-blur-soft)) saturate(160%);
+  transition: transform 150ms ease;
+}
+
+.icon-button:active {
+  transform: scale(0.92);
 }
 
 .icon-button svg,
@@ -225,6 +339,20 @@ a {
   border: 2px solid rgba(255, 255, 255, 0.16);
   border-radius: inherit;
   content: "";
+}
+
+/* R3F's Canvas wrapper fills itself via inline width:100%/height:100%, which
+   only resolves correctly if this grid item is stretched — the base rule's
+   place-items:center would otherwise size it to (collapsed) content instead. */
+.wakppuball-visual.wakppuball-visual--3d {
+  place-items: stretch;
+  overflow: hidden;
+  background: transparent;
+  box-shadow: 0 42px 90px rgba(0, 0, 0, 0.36);
+}
+
+.wakppuball-visual--3d:active {
+  transform: translateZ(0);
 }
 
 .wakppuball-core {
@@ -314,10 +442,10 @@ a {
 .field-stack input {
   width: 100%;
   min-height: 46px;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 8px;
+  border: 1px solid var(--glass-border-soft);
+  border-radius: var(--radius-lg);
   color: #fff;
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--glass-fill-soft);
   padding: 0 14px;
   outline: none;
 }
@@ -342,9 +470,9 @@ a {
   align-items: center;
   min-height: 46px;
   gap: 10px;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid var(--glass-border-soft);
+  border-radius: var(--radius-lg);
+  background: var(--glass-fill-soft);
   padding: 8px 10px;
 }
 
@@ -368,24 +496,26 @@ a {
   grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
   gap: 6px;
   padding: 4px;
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--glass-border-soft);
+  border-radius: var(--radius-md);
+  background: var(--glass-fill-soft);
 }
 
 .segment-button {
   min-height: 38px;
   border: 0;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   color: rgba(255, 255, 255, 0.7);
   background: transparent;
   font-size: 13px;
   font-weight: 800;
+  transition: background 150ms ease, color 150ms ease;
 }
 
 .segment-button.selected {
   color: #23072d;
   background: #ffffff;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.2);
 }
 
 .primary-button,
@@ -393,8 +523,16 @@ a {
 .danger-button,
 .match-button {
   border: 0;
-  border-radius: 8px;
+  border-radius: var(--radius-pill);
   font-weight: 900;
+  transition: transform 150ms ease;
+}
+
+.primary-button:active,
+.secondary-button:active,
+.danger-button:active,
+.match-button:active {
+  transform: scale(0.97);
 }
 
 .primary-button {
@@ -403,13 +541,18 @@ a {
   margin-top: 16px;
   color: #21032c;
   background: linear-gradient(135deg, #ffffff, #eec7ff 54%, #95ecff);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.85), 0 14px 30px rgba(150, 80, 220, 0.32);
 }
 
 .secondary-button {
   min-height: 44px;
   color: #fff;
-  background: rgba(255, 255, 255, 0.13);
-  padding: 0 16px;
+  border: 1px solid var(--glass-border-soft);
+  background: var(--glass-fill);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3);
+  padding: 0 18px;
+  backdrop-filter: blur(var(--glass-blur-soft));
+  -webkit-backdrop-filter: blur(var(--glass-blur-soft));
 }
 
 .danger-button {
@@ -420,7 +563,11 @@ a {
   justify-content: center;
   gap: 8px;
   color: #fff;
-  background: rgba(255, 82, 126, 0.22);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: linear-gradient(180deg, rgba(255, 99, 143, 0.34), rgba(255, 82, 126, 0.18));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3);
+  backdrop-filter: blur(var(--glass-blur-soft));
+  -webkit-backdrop-filter: blur(var(--glass-blur-soft));
 }
 
 .match-button {
@@ -432,54 +579,85 @@ a {
   min-height: 58px;
   color: #21032c;
   background: linear-gradient(135deg, #ffffff, #f0d1ff 55%, #94efff);
-  box-shadow: 0 18px 52px rgba(0, 0, 0, 0.34);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9), 0 18px 52px rgba(0, 0, 0, 0.34);
 }
 
 .modal-backdrop {
   position: fixed;
   inset: 0;
   z-index: 20;
-  display: grid;
-  align-items: end;
-  background: rgba(10, 0, 22, 0.34);
+  background: rgba(10, 0, 22, 0.18);
+  animation: backdropFade 200ms ease both;
 }
 
+/* Anchored popover, not a bottom sheet: pinned just under the icon that
+   opened it, sized to roughly a quarter of the mobile screen (half width x
+   half height). --pop-origin-x/y (set from JS to the trigger icon's
+   position, relative to this element's own box) drive the scale-in so it
+   visibly grows out of that icon. */
 .modal-sheet {
-  width: min(100%, 520px);
-  max-height: 78dvh;
-  margin: 0 auto;
-  padding: 18px;
-  border-radius: 8px 8px 0 0;
+  position: fixed;
+  top: calc(max(18px, env(safe-area-inset-top)) + 58px);
+  width: clamp(200px, 46vw, 260px);
+  height: clamp(280px, 46dvh, 380px);
+  padding: 16px;
+  border-radius: var(--radius-xl);
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
+  transform-origin: var(--pop-origin-x, 50%) var(--pop-origin-y, 0%);
+  animation: sheetPop 380ms cubic-bezier(0.19, 1, 0.22, 1) both;
+}
+
+.modal-sheet--profile {
+  left: max(18px, calc((100vw - 520px) / 2 + 18px));
+}
+
+.modal-sheet--collection {
+  right: max(18px, calc((100vw - 520px) / 2 + 18px));
 }
 
 .sheet-header {
   display: flex;
+  flex: none;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  margin-bottom: 14px;
+  margin-bottom: 12px;
 }
 
 .sheet-header h2 {
   margin: 0;
-  font-size: 20px;
+  font-size: 17px;
 }
 
 .sheet-content {
   display: grid;
-  max-height: calc(78dvh - 86px);
-  gap: 14px;
+  flex: 1;
+  min-height: 0;
+  align-content: start;
+  gap: 10px;
   overflow-y: auto;
   padding-bottom: 8px;
 }
 
 .profile-card,
-.stat-grid > div,
+.stat-grid > div {
+  border: 1px solid var(--glass-border-soft);
+  border-radius: var(--radius-lg);
+  background: var(--glass-fill-soft);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22);
+  backdrop-filter: blur(var(--glass-blur-soft));
+  -webkit-backdrop-filter: blur(var(--glass-blur-soft));
+}
+
+/* No backdrop-filter here: the collection grid can render many tiles at
+   once, and stacking blur per-tile is the more expensive case to avoid. */
 .collection-tile {
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid var(--glass-border-soft);
+  border-radius: var(--radius-lg);
+  background: var(--glass-fill-soft);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18);
 }
 
 .profile-card {
@@ -498,23 +676,32 @@ a {
 }
 
 .profile-card strong {
-  font-size: 24px;
+  font-size: 20px;
 }
 
+/* Stacked label/value rows rather than a 2-column grid: the profile popover
+   is narrow, and two side-by-side cards left labels like "누적 획득"
+   wrapping mid-word. */
 .stat-grid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 10px;
+  grid-template-columns: 1fr;
+  gap: 8px;
 }
 
 .stat-grid > div {
-  display: grid;
-  gap: 6px;
-  padding: 16px;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 12px 14px;
+}
+
+.stat-grid span {
+  white-space: nowrap;
 }
 
 .stat-grid strong {
-  font-size: 28px;
+  font-size: 20px;
 }
 
 .collection-grid {
@@ -528,6 +715,18 @@ a {
   min-width: 0;
   gap: 8px;
   padding: 10px;
+  color: inherit;
+  text-align: left;
+  transition: transform 150ms ease, border-color 150ms ease;
+}
+
+.collection-tile:active {
+  transform: scale(0.97);
+}
+
+.collection-tile--main {
+  border-color: rgba(255, 255, 255, 0.6);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.32), 0 0 0 1px rgba(255, 255, 255, 0.2);
 }
 
 .collection-tile .wakppuball-visual {
@@ -551,6 +750,8 @@ a {
   display: grid;
   gap: 12px;
   padding: 18px;
+  transform-origin: var(--pop-origin-x, 50%) var(--pop-origin-y, 100%);
+  animation: sheetPop 380ms cubic-bezier(0.19, 1, 0.22, 1) both;
 }
 
 .match-sheet p {
@@ -608,10 +809,10 @@ a {
 
 .page input {
   min-height: 48px;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 8px;
+  border: 1px solid var(--glass-border-soft);
+  border-radius: var(--radius-lg);
   color: #fff;
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--glass-fill-soft);
   padding: 0 14px;
 }
 
@@ -619,11 +820,12 @@ a {
 .page > p button {
   min-height: 46px;
   border: 0;
-  border-radius: 8px;
+  border-radius: var(--radius-pill);
   color: #21032c;
   background: #fff;
   padding: 0 16px;
   font-weight: 900;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
 }
 
 [role="alert"] {

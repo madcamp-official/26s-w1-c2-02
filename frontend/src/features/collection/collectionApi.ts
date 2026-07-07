@@ -27,3 +27,16 @@ export type CollectionItem = {
 export function getCollection(): Promise<{ items: CollectionItem[] }> {
   return apiRequest<{ items: CollectionItem[] }>('/collection', { method: 'GET' });
 }
+
+// POST /collection/:ownedId/select-main response.
+export type SelectMainResult = {
+  ok: true;
+  mainWakppuballId: string;
+  previousMainConsumed: boolean;
+  // Present only when previousMainConsumed is true.
+  consumedWakppuballId?: string;
+};
+
+export function selectMainWakppuball(ownedId: string): Promise<SelectMainResult> {
+  return apiRequest<SelectMainResult>(`/collection/${ownedId}/select-main`, { method: 'POST' });
+}

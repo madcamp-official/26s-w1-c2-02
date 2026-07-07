@@ -1,9 +1,17 @@
-import { useCallback, useEffect, useState, type CSSProperties, type ReactNode } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type MouseEvent,
+  type ReactNode
+} from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ApiError } from '../../shared/api/http';
 import { useAuth } from '../../shared/auth/AuthContext';
 import { fetchMe, type MeResponse } from '../auth/authApi';
-import { getCollection, type CollectionItem } from '../collection/collectionApi';
+import { getCollection, selectMainWakppuball, type CollectionItem } from '../collection/collectionApi';
 import {
   cancelMatchQueue,
   enterMatchQueue,
@@ -13,6 +21,8 @@ import {
   type MatchStatusResult
 } from '../matching/matchingApi';
 import { createWakppuball, getMainWakppuball, type MainWakppuball } from './wakppuballApi';
+import { DEFAULT_CUSTOMIZATION, DEFAULT_FRACTURE } from './wakppuballDefaults';
+import { WakppuballView } from './WakppuballView';
 import type {
   WakppuballCustomization,
   WakppuballFracture,
@@ -41,17 +51,36 @@ type MatchView =
 type ModalKind = 'profile' | 'collection' | null;
 type MeUser = MeResponse['user'];
 type MatchLocation = Pick<MatchQueueBody, 'latitude' | 'longitude'>;
+// Viewport point (usually a trigger button's center) the popup animates in from.
+type PopOrigin = { x: number; y: number };
 
-const DEFAULT_CUSTOMIZATION: WakppuballCustomization = {
-  outerColor: '#f3d35b',
-  innerColor: '#ffffff',
-  pattern: { type: 'preset', id: 'dots' },
-  shape: 'sphere'
-};
+function getButtonCenter(event: MouseEvent<HTMLButtonElement>): PopOrigin {
+  const rect = event.currentTarget.getBoundingClientRect();
+  return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+}
 
-const DEFAULT_FRACTURE: WakppuballFracture = {
-  thicknessPreset: 'medium'
-};
+// Positions a popup's CSS transform-origin at `origin` (a viewport point),
+// expressed relative to the popup element's own box, so it visually expands
+// out from the button that opened it.
+function usePopOrigin(active: boolean, origin: PopOrigin | null, ref: { current: HTMLElement | null }) {
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!active || !origin || !el) {
+      return;
+    }
+    // The entrance animation's fill-mode applies its first-keyframe transform
+    // (scale(0.04)) the instant the class takes effect — before this layout
+    // effect runs. Measuring now would read that shrunk box, not the popup's
+    // resting geometry, so neutralize the animation for the measurement and
+    // restore it immediately after (still before the browser paints).
+    const previousAnimation = el.style.animation;
+    el.style.animation = 'none';
+    const rect = el.getBoundingClientRect();
+    el.style.setProperty('--pop-origin-x', `${origin.x - rect.left}px`);
+    el.style.setProperty('--pop-origin-y', `${origin.y - rect.top}px`);
+    el.style.animation = previousAnimation;
+  }, [active, origin, ref]);
+}
 
 function getCurrentLocation(): Promise<MatchLocation> {
   return new Promise((resolve, reject) => {
@@ -150,41 +179,12 @@ function IconButton({
 }: {
   label: string;
   children: ReactNode;
-  onClick: () => void;
+  onClick: (event: MouseEvent<HTMLButtonElement>) => void;
 }) {
   return (
     <button className="icon-button" type="button" aria-label={label} title={label} onClick={onClick}>
       {children}
     </button>
-  );
-}
-
-function WakppuballVisual({
-  name,
-  customization
-}: {
-  name: string;
-  customization?: WakppuballCustomization | null;
-}) {
-  const outerColor = customization?.outerColor ?? DEFAULT_CUSTOMIZATION.outerColor;
-  const innerColor = customization?.innerColor ?? DEFAULT_CUSTOMIZATION.innerColor;
-  const pattern = customization?.pattern.id ?? DEFAULT_CUSTOMIZATION.pattern.id;
-
-  return (
-    <div
-      className={`wakppuball-visual pattern-${pattern}`}
-      role="img"
-      aria-label={name}
-      style={
-        {
-          '--wakppuball-outer': outerColor,
-          '--wakppuball-inner': innerColor
-        } as CSSProperties
-      }
-    >
-      <span className="wakppuball-highlight" />
-      <span className="wakppuball-core" />
-    </div>
   );
 }
 
@@ -240,8 +240,17 @@ export function MyWakppuballPage() {
   const [activeModal, setActiveModal] = useState<ModalKind>(null);
   const [profileView, setProfileView] = useState<AsyncState<MeUser>>({ kind: 'idle' });
   const [collectionView, setCollectionView] = useState<AsyncState<CollectionItem[]>>({ kind: 'idle' });
+  const [selectingMain, setSelectingMain] = useState(false);
+  const [selectMainError, setSelectMainError] = useState<string | null>(null);
   const [matchOpen, setMatchOpen] = useState(false);
   const [matchView, setMatchView] = useState<MatchView>({ kind: 'idle' });
+  const [popOrigin, setPopOrigin] = useState<PopOrigin | null>(null);
+  const [matchOrigin, setMatchOrigin] = useState<PopOrigin | null>(null);
+  const modalSheetRef = useRef<HTMLElement | null>(null);
+  const matchSheetRef = useRef<HTMLDivElement | null>(null);
+
+  usePopOrigin(activeModal !== null, popOrigin, modalSheetRef);
+  usePopOrigin(matchOpen, matchOrigin, matchSheetRef);
 
   const [name, setName] = useState('나의 왁뿌볼');
   const [outerColor, setOuterColor] = useState(DEFAULT_CUSTOMIZATION.outerColor);
@@ -329,7 +338,8 @@ export function MyWakppuballPage() {
     return () => window.clearInterval(timer);
   }, [checkMatchStatus, matchView.kind]);
 
-  async function openProfile() {
+  async function openProfile(event: MouseEvent<HTMLButtonElement>) {
+    setPopOrigin(getButtonCenter(event));
     setActiveModal('profile');
     setProfileView({ kind: 'loading' });
     try {
@@ -341,9 +351,30 @@ export function MyWakppuballPage() {
     }
   }
 
-  async function openCollection() {
+  async function openCollection(event: MouseEvent<HTMLButtonElement>) {
+    setPopOrigin(getButtonCenter(event));
     setActiveModal('collection');
+    setSelectMainError(null);
     await loadCollection();
+  }
+
+  async function handleSelectMain(item: CollectionItem) {
+    if (item.isMain || selectingMain) {
+      return;
+    }
+
+    setSelectMainError(null);
+    setSelectingMain(true);
+    try {
+      await selectMainWakppuball(item.ownedId);
+      setActiveModal(null);
+      await load();
+    } catch (error) {
+      const message = error instanceof ApiError ? error.message : '대표 왁뿌볼을 변경하지 못했습니다.';
+      setSelectMainError(message);
+    } finally {
+      setSelectingMain(false);
+    }
   }
 
   function handleLogout() {
@@ -379,7 +410,8 @@ export function MyWakppuballPage() {
     }
   }
 
-  async function handleStartMatch() {
+  async function handleStartMatch(event: MouseEvent<HTMLButtonElement>) {
+    setMatchOrigin(getButtonCenter(event));
     setMatchOpen(true);
     setMatchView({ kind: 'loading', message: '위치 확인 중…' });
 
@@ -447,7 +479,7 @@ export function MyWakppuballPage() {
 
         {view.kind === 'empty' && (
           <>
-            <WakppuballVisual name="새 왁뿌볼 미리보기" customization={previewCustomization} />
+            <WakppuballView name="새 왁뿌볼 미리보기" customization={previewCustomization} />
             <div className="create-panel" aria-label="왁뿌볼 생성">
               <p>아직 저장된 왁뿌볼이 없어요. 나의 왁뿌볼을 만들어 보세요.</p>
 
@@ -515,7 +547,7 @@ export function MyWakppuballPage() {
 
         {view.kind === 'success' && (
           <>
-            <WakppuballVisual name={view.wakppuball.name} customization={view.wakppuball.customization} />
+            <WakppuballView name={view.wakppuball.name} customization={view.wakppuball.customization} />
             <div className="main-ball-caption">
               <p>{view.wakppuball.name}</p>
               <span>남은 뿌시기 횟수 {view.wakppuball.remainingBreakCount}</span>
@@ -532,7 +564,15 @@ export function MyWakppuballPage() {
 
       {activeModal && (
         <div className="modal-backdrop" role="presentation" onMouseDown={() => setActiveModal(null)}>
-          <section className="modal-sheet" role="dialog" aria-modal="true" onMouseDown={(event) => event.stopPropagation()}>
+          <section
+            className={
+              activeModal === 'profile' ? 'modal-sheet modal-sheet--profile' : 'modal-sheet modal-sheet--collection'
+            }
+            ref={modalSheetRef}
+            role="dialog"
+            aria-modal="true"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
             <div className="sheet-header">
               <h2>{activeModal === 'profile' ? '내 정보' : '내 컬렉션'}</h2>
               <IconButton label="닫기" onClick={() => setActiveModal(null)}>
@@ -576,14 +616,21 @@ export function MyWakppuballPage() {
                 {collectionView.kind === 'success' && collectionView.data.length === 0 && (
                   <p>아직 컬렉션이 비어 있어요.</p>
                 )}
+                {selectMainError && <p role="alert">{selectMainError}</p>}
                 {collectionView.kind === 'success' && collectionView.data.length > 0 && (
                   <div className="collection-grid">
                     {collectionView.data.map((item) => (
-                      <article className="collection-tile" key={item.ownedId}>
-                        <WakppuballVisual name={item.name} customization={item.customization} />
+                      <button
+                        type="button"
+                        className={item.isMain ? 'collection-tile collection-tile--main' : 'collection-tile'}
+                        key={item.ownedId}
+                        onClick={() => handleSelectMain(item)}
+                        disabled={selectingMain}
+                      >
+                        <WakppuballView name={item.name} customization={item.customization} />
                         <strong>{item.name}</strong>
                         <span>{item.isMain ? '대표 왁뿌볼' : item.acquiredType === 'MATCHED' ? '매칭 획득' : '직접 생성'}</span>
-                      </article>
+                      </button>
                     ))}
                   </div>
                 )}
@@ -594,7 +641,7 @@ export function MyWakppuballPage() {
       )}
 
       {matchOpen && (
-        <div className="match-sheet" role="dialog" aria-modal="true" aria-label="매칭 상태">
+        <div className="match-sheet" ref={matchSheetRef} role="dialog" aria-modal="true" aria-label="매칭 상태">
           {matchView.kind === 'idle' && <p>매칭을 시작해 보세요.</p>}
 
           {matchView.kind === 'loading' && <p>{matchView.message}</p>}
@@ -618,7 +665,7 @@ export function MyWakppuballPage() {
             <>
               <p>{matchView.result.partner.username} 님과 매칭됐어요!</p>
               <div className="matched-ball">
-                <WakppuballVisual
+                <WakppuballView
                   name={matchView.result.partnerWakppuball.name}
                   customization={matchView.result.partnerWakppuball.customization}
                 />
