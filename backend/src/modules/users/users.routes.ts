@@ -46,6 +46,7 @@ usersRouter.get(
         username: user.username,
         mainWakppuballId: mainWakppuball?.id.toString() ?? null,
         collectionCount: user.ownedWakppuballs.length,
+        totalAcquiredCount: user.totalAcquiredCount,
         createdAt: user.createdAt.toISOString()
       }
     });

@@ -23,7 +23,7 @@ This file holds only stable, rarely-changing information.
       matching/MatchingPage.tsx
       wakppuball/MyWakppuballPage.tsx
     shared/api/http.ts   # common fetch wrapper, handles Authorization header
-    assets/models/        # temporary 2D images / model resources
+    assets/models/index.ts  # shape -> GLB asset registry, see docs/3d-asset-contract.md
     App.tsx, main.tsx, styles.css
   ```
 - State management: no library yet, plain React state/context. Revisit if needed.
@@ -49,15 +49,17 @@ Frontend only needs to care about API field names (`ownedId`, `modelId`, `remain
 
 Learned by reading backend PRs — `docs/api.md` has repeatedly lagged the implementation, so **treat backend code as the source of truth**. Full history in `docs/sprint-history/`.
 
-- **Credential validation** (backend zod, not in the API doc): `username` 2–20 chars matching `^[a-zA-Z0-9_]+$`; `password` 8–72 chars. On violation the server returns only a generic `400 VALIDATION_ERROR` with no per-field detail — the **frontend owns per-field messages**. Shared rules live in `shared/validation/credentials.ts`, used by both the form and the MSW mock.
-- **Matching is synchronous.** `POST /matching/queue` returns `MATCHED` (the partner ball is created and added to your collection immediately) or `FAILED` (`{ reason: 'NO_PARTNER_FOUND' }`). There is NO `WAITING` state, NO polling, and NO separate exchange step. `GET /matching/status` and `POST /matching/:matchId/exchange` are unimplemented (501). Matched balls carry no `acquiredFrom`; `matchId` is a string like `temp-42`.
+- **Credential validation** (backend zod, not in the API doc): `username` 2–20 chars matching `^[a-zA-Z0-9_]+$`; `password` 8–72 chars. On violation the server returns only a generic `400 VALIDATION_ERROR` with no per-field detail — the **frontend owns per-field messages**. Shared rules live in `shared/validation/credentials.ts`.
+- **Matching uses a `WAITING` queue + polling (reverted from Sprint 1's synchronous design — see `docs/current-sprint.md`).** `POST /matching/queue` returns `MATCHED` immediately if a compatible waiting partner exists, otherwise `WAITING` (`{ queueId, enteredAt }`). `GET /matching/status` is now implemented (no longer 501) — poll it every ~3s; it returns `NONE` / `WAITING` / `MATCHED`. `POST /matching/:matchId/exchange` has been removed entirely — there is no separate confirm step, the partner ball is already in your collection the moment `MATCHED` appears. `DELETE /matching/queue` is unchanged. `POST /matching/queue` now requires `latitude`/`longitude`; missing coords or being outside the campus geofence rejects the request before any other matching check (`LOCATION_REQUIRED`/`OUTSIDE_CAMPUS_AREA` are checked first, ahead of `MAIN_WAKPPUBALL_REQUIRED`/`BREAK_COUNT_REQUIRED`/`ALREADY_IN_QUEUE`). Raw coordinates are not stored, only a pass/fail + timestamp log. WebSockets were considered for this and rejected in favor of polling.
+- **`GET /users/me`** includes `totalAcquiredCount`: a monotonically increasing lifetime count, +1 on `POST /wakppuballs` success and +1 for both users when a match reaches `MATCHED`. Unlike `collectionCount`, it does not decrease when a ball becomes `CONSUMED`.
 - **The main wakppuball is composed on the frontend.** `GET /wakppuballs/me/main` is unimplemented (501), so `wakppuballApi.getMainWakppuball()` derives it from `GET /users/me` (`mainWakppuballId`) + `GET /collection`. `getMainWakppuballViaEndpoint` is kept for a one-line revert once the backend ships the endpoint. (Temporary but currently active — see `docs/backlog.md`.)
 - **`POST /wakppuballs`**: all body fields optional; `setAsMain: true` re-points the main ball; response includes `modelUrl`/`thumbnailUrl`.
+- **`POST /collection/:ownedId/select-main`** is implemented (no longer a 501 stub). Selecting the already-main ball is a no-op. Otherwise the previous main is un-mained, and only marked `CONSUMED` (removed from the collection) if its `remainingBreakCount` was already 0 — otherwise it just stays in the collection, no longer main.
 - Error codes in use include `MAIN_WAKPPUBALL_REQUIRED`, `BREAK_COUNT_REQUIRED`, `OWNED_WAKPPUBALL_NOT_FOUND` beyond the common ones in `docs/api.md`.
 
 ## Frontend Dev Setup (stable)
 
-- **Mock API**: MSW handlers in `frontend/src/mocks/`, started only in dev from `main.tsx`; handlers mirror real backend behavior. Toggle scenarios in `src/mocks/scenarios.ts`. Set `VITE_ENABLE_MOCKS=false` to run against the real backend (`docs/integration-testing.md`). One-time worker setup must be run from inside `frontend/` (`cd frontend && npx msw init public --save`).
+- **Real backend in dev**: the Vite dev server proxies `/api` to `http://localhost:3000` via `frontend/vite.config.ts`. Start the backend first, then run `npm run dev:frontend`. See `docs/integration-testing.md`.
 - **Auth token**: stored in `localStorage` via `tokenStorage` in `shared/api/http.ts`; `apiRequest` auto-attaches `Authorization: Bearer <token>` and throws `ApiError` carrying `{ code, message }` parsed from the common error shape.
 - **Tests**: Vitest + Testing Library. `npm test -w frontend` (or `test:watch`). Component tests mock the feature API layer and assert the loading/error/empty/success states.
 
@@ -73,8 +75,9 @@ Every screen must handle these 4 states:
 ## Coding Conventions (always apply)
 
 - Use API response field names as-is for component props/variables (`remainingBreakCount` stays `remainingBreakCount`, no renaming)
-- Declare colors/spacing as CSS variables in `styles.css` and reference them
+- Declare colors/spacing as CSS variables in `styles.css` and reference them — corner radius (`--radius-sm` … `--radius-2xl`, `--radius-pill`) and glass-surface tokens (`--glass-fill`, `--glass-border`, `--glass-blur`, etc.) are the established design tokens; reuse them for new UI instead of hardcoding new values
 - Extract shared UI (buttons/inputs/modals/cards) into reusable components instead of rebuilding per screen
+- Render a wakppuball via `WakppuballView` (`frontend/src/features/wakppuball/WakppuballView.tsx`), not `WakppuballVisual` directly — it renders the real 3D model when one is registered for the shape in `assets/models/index.ts`, falling back to the CSS ball (`WakppuballVisual`) otherwise. See `docs/3d-asset-contract.md` for how to register a delivered model. `three`/`@react-three/*` are only imported from `Wakppuball3DCanvas.tsx`, loaded via `React.lazy()` — keep any new 3D code there too, don't import those packages from a file that's always in the main bundle (they add ~250kB gzipped).
 - Write styles mobile-first (small screen sizes first)
 - Never implement features outside the current scope — always check the include/exclude list in `docs/current-sprint.md`
 

@@ -1,6 +1,6 @@
 // Mirrors the backend zod rules (backend/src/modules/auth/auth.routes.ts).
 // The server only returns a generic VALIDATION_ERROR, so these rules exist so the
-// frontend can show per-field guidance and so the MSW mock behaves like the real API.
+// frontend can show per-field guidance before submitting the form.
 
 export const USERNAME_REGEX = /^[a-zA-Z0-9_]+$/;
 export const USERNAME_MIN = 2;
@@ -26,7 +26,7 @@ export function validatePassword(password: string): string | null {
   return null;
 }
 
-// Boolean gate shared with the mock backend (matches the server's zod schema).
+// Boolean gate that matches the server's zod schema.
 export function isValidCredential(username: string, password: string): boolean {
   return validateUsername(username) === null && validatePassword(password) === null;
 }
