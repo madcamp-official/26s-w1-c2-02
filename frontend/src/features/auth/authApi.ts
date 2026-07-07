@@ -46,3 +46,10 @@ export function login(credentials: Credentials): Promise<AuthResponse> {
 export function fetchMe(): Promise<MeResponse> {
   return apiRequest<MeResponse>('/users/me', { method: 'GET' });
 }
+
+export function renameUsername(username: string): Promise<{ user: { id: string; username: string } }> {
+  return apiRequest<{ user: { id: string; username: string } }>('/users/me', {
+    method: 'PATCH',
+    body: JSON.stringify({ username })
+  });
+}

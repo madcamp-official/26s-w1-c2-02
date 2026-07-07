@@ -28,13 +28,12 @@ export function getCollection(): Promise<{ items: CollectionItem[] }> {
   return apiRequest<{ items: CollectionItem[] }>('/collection', { method: 'GET' });
 }
 
-// POST /collection/:ownedId/select-main response.
+// POST /collection/:ownedId/select-main response. Stepping down as main never
+// consumes a wakppuball (0 remainingBreakCount just locks interaction), so
+// there's nothing here beyond which ball is main now.
 export type SelectMainResult = {
   ok: true;
   mainWakppuballId: string;
-  previousMainConsumed: boolean;
-  // Present only when previousMainConsumed is true.
-  consumedWakppuballId?: string;
 };
 
 export function selectMainWakppuball(ownedId: string): Promise<SelectMainResult> {

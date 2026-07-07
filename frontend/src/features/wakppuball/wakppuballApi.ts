@@ -112,6 +112,15 @@ export function createWakppuball(body: CreateWakppuballBody): Promise<{ wakppuba
   });
 }
 
+// PATCH /wakppuballs/me/created — renames the caller's own created wakppuball
+// (never a matched one; there's exactly one per user, so no ownedId needed).
+export function renameCreatedWakppuball(name: string): Promise<{ ok: true; ownedId: string; name: string }> {
+  return apiRequest<{ ok: true; ownedId: string; name: string }>('/wakppuballs/me/created', {
+    method: 'PATCH',
+    body: JSON.stringify({ name })
+  });
+}
+
 // POST /wakppuballs/:ownedId/break response, per docs/api.md.
 export type BrokenWakppuball = {
   ownedId: string;

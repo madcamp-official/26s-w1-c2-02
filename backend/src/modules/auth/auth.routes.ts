@@ -98,7 +98,9 @@ authRouter.post('/logout', (_req, res) => {
   res.status(501).json({ message: 'TODO: 로그아웃 구현' });
 });
 
-const usernameSchema = z
+// Exported so other modules (e.g. the username-rename route) validate against
+// the exact same rule instead of duplicating/drifting from it.
+export const usernameSchema = z
   .string()
   .min(2)
   .max(20)

@@ -63,6 +63,10 @@ const breakBodySchema = z.object({
   interactionType: z.literal('WAX_BREAK')
 });
 
+const renameCreatedWakppuballSchema = z.object({
+  name: z.string().min(1).max(50)
+});
+
 function parseOwnedIdParam(rawParam: string | string[] | undefined): bigint {
   // @types/express@5 types params as `string | string[]` even though this
   // project runs express@4 (single-segment params are always a string).
@@ -161,6 +165,44 @@ wakppuballsRouter.post(
   })
 );
 
+// Renames the caller's own created wakppuball (never a matched one — that
+// would rename the same WakppuballModel row for its original creator too,
+// since matched copies share the model, not just the name, with the
+// original). No :ownedId needed: the create UI only ever offers to make one
+// per user, so "my created ball" is unambiguous.
+wakppuballsRouter.patch(
+  '/me/created',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    if (!req.user) {
+      throw new ApiError(401, 'UNAUTHORIZED', '로그인이 필요합니다.');
+    }
+
+    const body = validateBody(renameCreatedWakppuballSchema, req);
+    const ownerUserId = BigInt(req.user.id);
+
+    const owned = await prisma.userWakppuball.findFirst({
+      where: { ownerUserId, acquiredType: 'CREATED' },
+      orderBy: { acquiredAt: 'asc' }
+    });
+
+    if (!owned) {
+      throw new ApiError(404, 'OWNED_WAKPPUBALL_NOT_FOUND', '생성한 왁뿌볼이 없습니다.');
+    }
+
+    const model = await prisma.wakppuballModel.update({
+      where: { id: owned.wakppuballModelId },
+      data: { name: body.name }
+    });
+
+    res.status(200).json({
+      ok: true,
+      ownedId: owned.id.toString(),
+      name: model.name
+    });
+  })
+);
+
 wakppuballsRouter.post(
   '/:ownedId/break',
   requireAuth,
@@ -188,12 +230,11 @@ wakppuballsRouter.post(
         throw new ApiError(400, 'NO_BREAK_COUNT_LEFT', '남은 뿌시기 횟수가 없습니다.');
       }
 
-      // Reaching 0 doesn't consume the wakppuball — it stays ACTIVE and in
-      // the collection, just no longer touchable/crackable (enforced
-      // client-side once remainingBreakCount is 0). It's only ever consumed
-      // by stepping down as main while depleted (select-main,
-      // collection.routes.ts), or refilled back to full by a new match with
-      // the same partner (createOrRefillMatchedOwnedWakppuball).
+      // Reaching 0 never consumes the wakppuball — it stays ACTIVE and in the
+      // collection forever, just no longer touchable/crackable (enforced
+      // client-side once remainingBreakCount is 0). The only way it goes back
+      // up is a new match with the same partner refilling it
+      // (createOrRefillMatchedOwnedWakppuball, matching.routes.ts).
       return tx.userWakppuball.update({
         where: { id: targetId },
         data: { remainingBreakCount: { decrement: 1 } }

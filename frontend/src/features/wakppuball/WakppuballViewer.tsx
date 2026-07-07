@@ -153,10 +153,9 @@ function InteractiveWakppuball({
       if (!press || e.pointerId !== press.pointerId) return;
       const moved = Math.hypot(e.clientX - press.startX, e.clientY - press.startY);
       if (moved <= TAP_MOVE_THRESHOLD) {
-        // Every confirmed tap makes a sound, even repeat taps on an already-
-        // cracked piece — only the *first* tap on a given piece pops it open
-        // (idempotent, session-local; that's the part that costs a break).
-        playWakppuballTouchSound();
+        // The sound already played on press (handlePointerDown) — only the
+        // *first* tap on a given piece pops it open here (idempotent,
+        // session-local; that's the part that costs a break).
         if (!poppedRef.current.has(press.node.name)) {
           poppedRef.current.add(press.node.name);
           onPiecePopped(press.node.name);
@@ -187,6 +186,9 @@ function InteractiveWakppuball({
     if (!hit) return;
     const node = resolvePieceNode(hit.object);
     if (!node) return;
+    // Plays on press, not release — squeezing/cracking should be felt the
+    // instant a finger lands, even if the gesture then turns into a drag.
+    playWakppuballTouchSound();
     const hitPoint = hit.point.clone();
     node.parent?.worldToLocal(hitPoint); // match the pieces' parent-local space
     pressRef.current = { node, hitPoint, startX: e.nativeEvent.clientX, startY: e.nativeEvent.clientY, pointerId: e.nativeEvent.pointerId };

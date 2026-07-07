@@ -434,6 +434,78 @@ a {
   font-size: 14px;
 }
 
+.main-ball-caption .inline-edit-form {
+  justify-content: center;
+}
+
+.icon-button-inline {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  margin-left: 6px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  color: inherit;
+  background: transparent;
+  vertical-align: middle;
+}
+
+.icon-button-inline svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* Wraps into two rows rather than one: the profile/main-ball popovers are as
+   narrow as 200px (clamp in .modal-sheet), too tight for an input plus two
+   buttons on one line. The input takes a full row (flex-basis 100%) and the
+   buttons share the row below. */
+.inline-edit-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.inline-edit-form input {
+  min-height: 36px;
+  min-width: 0;
+  flex: 1 1 100%;
+  border: 1px solid var(--glass-border-soft);
+  border-radius: var(--radius-md);
+  background: var(--glass-fill-soft);
+  color: #fff;
+  padding: 0 10px;
+  font: inherit;
+}
+
+.inline-edit-form button {
+  flex: 1;
+  min-height: 36px;
+  min-width: 0;
+  border: 0;
+  border-radius: var(--radius-pill);
+  padding: 0 12px;
+  font-weight: 700;
+  font-size: 13px;
+}
+
+.inline-edit-form button[type="submit"] {
+  color: #21032c;
+  background: #fff;
+}
+
+.inline-edit-form button[type="button"] {
+  color: #fff;
+  background: var(--glass-fill-soft);
+  border: 1px solid var(--glass-border-soft);
+}
+
 .surface-panel,
 .compact-panel {
   width: min(100%, 360px);

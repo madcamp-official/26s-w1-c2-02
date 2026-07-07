@@ -7,7 +7,6 @@ import type {
 } from '../wakppuball/wakppuballTypes';
 
 export type MatchQueueBody = {
-  wakppuballOwnedId?: string;
   latitude: number;
   longitude: number;
 };
