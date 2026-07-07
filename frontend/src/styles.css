@@ -843,7 +843,10 @@ a {
   right: max(18px, calc((100vw - 520px) / 2 + 18px));
   bottom: max(92px, calc(env(safe-area-inset-bottom) + 92px));
   left: max(18px, calc((100vw - 520px) / 2 + 18px));
-  z-index: 12;
+  /* Above .modal-backdrop's 20 — an in-progress match/queue is a blocking
+     state with a cancel button that must stay reachable, so opening the
+     profile/collection popover shouldn't visually bury it. */
+  z-index: 24;
   display: grid;
   gap: 12px;
   padding: 18px;
