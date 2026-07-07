@@ -14,6 +14,12 @@ vi.mock('./wakppuballApi', async (importOriginal) => {
   return { ...actual, getMainWakppuball: vi.fn(), createWakppuball: vi.fn() };
 });
 
+// The 3D viewer mounts a real WebGL <Canvas>, which jsdom can't render. These
+// tests cover page state logic, not 3D — stub the viewer with a lightweight marker.
+vi.mock('./WakppuballViewer', () => ({
+  WakppuballViewer: () => <div data-testid="wakppuball-viewer" />
+}));
+
 const getMainWakppuball = vi.mocked(wakppuballApi.getMainWakppuball);
 const createWakppuball = vi.mocked(wakppuballApi.createWakppuball);
 

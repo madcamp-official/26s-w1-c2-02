@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ApiError } from '../../shared/api/http';
 import { createWakppuball, getMainWakppuball, type MainWakppuball } from './wakppuballApi';
+import { WakppuballViewer } from './WakppuballViewer';
 
 // Customization UI is out of scope this sprint — send a fixed value.
 // Kept as a top-level constant so it's easy to swap for real state later.
@@ -105,16 +106,9 @@ export function MyWakppuballPage() {
 
       {view.kind === 'success' && (
         <div className="panel">
-          {/* Static 2D display only this sprint — no break/crack interaction. */}
-          {view.wakppuball.thumbnailUrl ? (
-            <img
-              src={view.wakppuball.thumbnailUrl}
-              alt={view.wakppuball.name}
-              style={{ maxWidth: '100%' }}
-            />
-          ) : (
-            <div aria-label="왁뿌볼 이미지 없음">[왁뿌볼 이미지]</div>
-          )}
+          {/* Phase 1: interactive 3D render (intact, achromatic). Rotate/zoom/press
+              land in later phases. remainingBreakCount stays held in view state. */}
+          <WakppuballViewer />
           <p>{view.wakppuball.name}</p>
           <p>남은 뿌시기 횟수: {view.wakppuball.remainingBreakCount}</p>
           <button type="button" onClick={() => navigate('/matching')}>
