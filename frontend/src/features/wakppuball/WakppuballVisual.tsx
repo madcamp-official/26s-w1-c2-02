@@ -12,9 +12,20 @@ export function WakppuballVisual({
   name: string;
   customization?: WakppuballCustomization | null;
 }) {
-  const outerColor = customization?.outerColor ?? DEFAULT_CUSTOMIZATION.outerColor;
-  const innerColor = customization?.innerColor ?? DEFAULT_CUSTOMIZATION.innerColor;
-  const pattern = customization?.pattern.id ?? DEFAULT_CUSTOMIZATION.pattern.id;
+  const runtimeCustomization = customization as
+    | (WakppuballCustomization & { bodyColor?: string })
+    | null
+    | undefined;
+  const outerColor =
+    runtimeCustomization?.outerColor ??
+    runtimeCustomization?.bodyColor ??
+    DEFAULT_CUSTOMIZATION.outerColor;
+  const innerColor = runtimeCustomization?.innerColor ?? DEFAULT_CUSTOMIZATION.innerColor;
+  const patternId = runtimeCustomization?.pattern?.id;
+  const pattern =
+    patternId === 'dots' || patternId === 'stripes'
+      ? patternId
+      : DEFAULT_CUSTOMIZATION.pattern.id;
 
   return (
     <div
