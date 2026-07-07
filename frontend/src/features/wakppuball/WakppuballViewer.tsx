@@ -1,8 +1,19 @@
-import { Component, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import {
+  Component,
+  forwardRef,
+  Suspense,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode
+} from 'react';
 import { Canvas, useFrame, type ThreeEvent } from '@react-three/fiber';
 import { Html, OrbitControls, useGLTF } from '@react-three/drei';
 import { Matrix4, Quaternion, Vector3, type Object3D } from 'three';
-import { breakWakppuball, sessionEndMainWakppuball } from './wakppuballApi';
+import { playWakppuballTouchSound } from '../../shared/sound/soundManager';
+import { breakWakppuball } from './wakppuballApi';
 // Vite resolves this to a served asset URL. The GLB is Draco-compressed;
 // useGLTF pulls the Draco decoder from the gstatic CDN by default (needs network
 // in dev). If we ever need fully-offline dev, self-host the decoder in /public.
@@ -69,7 +80,13 @@ type Piece = { node: Object3D; rest: Vector3; radial: Vector3 };
 // piece pops permanently (cracks open). Never touches geometry — position only.
 // Each frame every piece is driven toward:
 //   rest  +  permanent crack offset (if popped)  +  temporary press offset (if pressing)
-function InteractiveWakppuball({ onPiecePopped }: { onPiecePopped: (pieceName: string) => void }) {
+function InteractiveWakppuball({
+  onPiecePopped,
+  interactionDisabled
+}: {
+  onPiecePopped: (pieceName: string) => void;
+  interactionDisabled: boolean;
+}) {
   const { scene: original } = useGLTF(wakppuballModelUrl);
   // useGLTF caches the scene; clone per mount so cracks/depress reset every visit.
   const scene = useMemo(() => original.clone(true), [original]);
@@ -135,11 +152,15 @@ function InteractiveWakppuball({ onPiecePopped }: { onPiecePopped: (pieceName: s
       const press = pressRef.current;
       if (!press || e.pointerId !== press.pointerId) return;
       const moved = Math.hypot(e.clientX - press.startX, e.clientY - press.startY);
-      if (moved <= TAP_MOVE_THRESHOLD && !poppedRef.current.has(press.node.name)) {
-        // Confirmed press → pop the hit piece (idempotent, session-local). It now
-        // stays cracked open (permanent inward offset applied in useFrame).
-        poppedRef.current.add(press.node.name);
-        onPiecePopped(press.node.name);
+      if (moved <= TAP_MOVE_THRESHOLD) {
+        // Every confirmed tap makes a sound, even repeat taps on an already-
+        // cracked piece — only the *first* tap on a given piece pops it open
+        // (idempotent, session-local; that's the part that costs a break).
+        playWakppuballTouchSound();
+        if (!poppedRef.current.has(press.node.name)) {
+          poppedRef.current.add(press.node.name);
+          onPiecePopped(press.node.name);
+        }
       }
       // Real release → keep most of the squash, spring back only a little.
       residualAmount.current = squashAmount.current * (1 - SQUASH_RELEASE_RECOVERY);
@@ -156,6 +177,9 @@ function InteractiveWakppuball({ onPiecePopped }: { onPiecePopped: (pieceName: s
   }, [onPiecePopped]);
 
   function handlePointerDown(e: ThreeEvent<PointerEvent>) {
+    // Out of break count: view/rotate/zoom only, no press-to-crack. OrbitControls
+    // sits alongside this handler (not gated by it), so rotation still works.
+    if (interactionDisabled) return;
     // The handler sits on the root, so R3F would re-dispatch for every intersected
     // piece (front→back). Take the nearest hit and stop, else we'd press a back piece.
     e.stopPropagation();
@@ -245,9 +269,25 @@ class ModelErrorBoundary extends Component<{ children: ReactNode }, { failed: bo
   }
 }
 
-export function WakppuballViewer({ ownedId }: { ownedId: string }) {
-  // Session-local popped set. Kept here (lifted above the Canvas) because Phase 4
-  // needs "was anything popped?" to fire the break API once on unmount.
+export type WakppuballViewerHandle = {
+  // Awaits any pending break report — used by logout so the request goes out
+  // (and finishes) while the auth token is still valid, instead of racing
+  // signOut(). See MyWakppuballPage.tsx handleLogout.
+  flushBreakReport: () => Promise<void>;
+};
+
+export const WakppuballViewer = forwardRef<
+  WakppuballViewerHandle,
+  { ownedId: string; remainingBreakCount: number }
+>(function WakppuballViewer({ ownedId, remainingBreakCount }, ref) {
+  // Evaluated once against the count as loaded — not re-checked live against
+  // pops made *this* session, since the server decrement itself only lands
+  // when the session ends (see reportBreakIfNeeded). Started this session
+  // with 0 left → view/rotate/zoom only, no more press-to-crack.
+  const interactionDisabled = remainingBreakCount <= 0;
+
+  // Session-local popped set. Kept here (lifted above the Canvas) because
+  // "was anything popped?" fires the break API once on unmount.
   const [poppedPieces, setPoppedPieces] = useState<Set<string>>(() => new Set());
 
   function handlePiecePopped(pieceName: string) {
@@ -259,44 +299,46 @@ export function WakppuballViewer({ ownedId }: { ownedId: string }) {
     });
   }
 
-  // Phase 4: rotate/zoom/press-and-hold never call the server (docs/api.md) —
-  // only a piece actually popping consumes a break. Fire once, iff anything
-  // popped this session. A ref (not `poppedPieces` itself) is read here so
-  // callers don't need to re-run — and therefore don't re-fire the request —
-  // on every pop.
+  // rotate/zoom/press-and-hold never call the server (docs/api.md) — only a
+  // piece actually popping consumes a break. Fires once, iff anything popped
+  // this session. A ref (not `poppedPieces` itself) is read here so callers
+  // don't need to re-run — and therefore don't re-fire the request — on
+  // every pop. Returns the in-flight promise (or undefined if there's
+  // nothing to report) so a caller that needs to wait for it can.
   const poppedPiecesRef = useRef(poppedPieces);
   poppedPiecesRef.current = poppedPieces;
   const reportedRef = useRef(false);
-  function reportBreakIfNeeded(keepalive: boolean) {
-    if (reportedRef.current || poppedPiecesRef.current.size === 0) return;
+  function reportBreakIfNeeded(keepalive: boolean): Promise<void> | undefined {
+    if (reportedRef.current || poppedPiecesRef.current.size === 0) return undefined;
     reportedRef.current = true;
     // Best-effort: the break endpoint doesn't change what's already rendered
     // (this viewer is going away), so a failure here has nothing to roll back.
-    // remainingBreakCount/CONSUMED handling lands with the UI that surfaces them.
-    breakWakppuball(ownedId, { keepalive }).catch((error) => {
-      console.error('Failed to report wakppuball break', error);
-    });
+    return breakWakppuball(ownedId, { keepalive })
+      .then(() => undefined)
+      .catch((error) => {
+        console.error('Failed to report wakppuball break', error);
+      });
   }
+
+  useImperativeHandle(ref, () => ({
+    flushBreakReport: () => reportBreakIfNeeded(false) ?? Promise.resolve()
+  }));
 
   // A normal in-app unmount (navigating elsewhere, or `key` forcing a remount
   // when the main ball changes — see MyWakppuballPage.tsx) fires the cleanup
   // below. A real tab close/refresh never reaches React's unmount at all — the
   // page just dies — so `pagehide` is the actual signal there (docs/api.md
   // calls this out explicitly), and `keepalive` lets the request outlive it.
-  // `pagehide` also covers logout-by-navigation the same way normal unmount
-  // does, so it isn't wired separately for that case.
   useEffect(() => {
     function handlePageHide() {
       reportBreakIfNeeded(true);
-      sessionEndMainWakppuball('PAGE_HIDE', { keepalive: true }).catch((error) => {
-        console.error('Failed to report wakppuball session end', error);
-      });
     }
     window.addEventListener('pagehide', handlePageHide);
     return () => {
       window.removeEventListener('pagehide', handlePageHide);
       reportBreakIfNeeded(false);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ownedId]);
 
   return (
@@ -317,33 +359,20 @@ export function WakppuballViewer({ ownedId }: { ownedId: string }) {
         />
         <ModelErrorBoundary>
           <Suspense fallback={<Html center>3D 불러오는 중…</Html>}>
-            <InteractiveWakppuball onPiecePopped={handlePiecePopped} />
+            <InteractiveWakppuball onPiecePopped={handlePiecePopped} interactionDisabled={interactionDisabled} />
           </Suspense>
         </ModelErrorBoundary>
       </Canvas>
 
-      {/* TEMPORARY dev aid: how many pieces popped this session. Not the server's
-          remainingBreakCount — that stays hidden for now (see Phase 4). */}
-      {poppedPieces.size > 0 && (
-        <span
-          style={{
-            position: 'absolute',
-            left: 8,
-            bottom: 8,
-            padding: '4px 8px',
-            borderRadius: 6,
-            background: 'rgba(0,0,0,0.6)',
-            color: '#fff',
-            fontSize: 12,
-            pointerEvents: 'none'
-          }}
-        >
-          뿌셔진 조각: {poppedPieces.size}개
-        </span>
+      {/* TEMPORARY dev aid. Not the server's remainingBreakCount display (see backlog). */}
+      {interactionDisabled ? (
+        <span className="wakppuball-viewer-hint">뿌시기 횟수를 다 썼어요. 만지고 돌려볼 수는 있어요.</span>
+      ) : (
+        poppedPieces.size > 0 && <span className="wakppuball-viewer-hint">뿌셔진 조각: {poppedPieces.size}개</span>
       )}
     </div>
   );
-}
+});
 
 // Warm the cache so the model is ready by the time the success state mounts.
 useGLTF.preload(wakppuballModelUrl);

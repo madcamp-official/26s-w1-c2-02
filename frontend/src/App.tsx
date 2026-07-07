@@ -5,6 +5,7 @@ import { MatchingPage } from './features/matching/MatchingPage';
 import { MyWakppuballPage } from './features/wakppuball/MyWakppuballPage';
 import { useAuth } from './shared/auth/AuthContext';
 import { RequireAuth } from './shared/auth/RequireAuth';
+import { useButtonClickSound } from './shared/sound/useButtonClickSound';
 
 // /login is only for logged-out users; send authenticated users to the main screen.
 function LoginRoute() {
@@ -19,6 +20,8 @@ function LoginRoute() {
 }
 
 export function App() {
+  useButtonClickSound();
+
   return (
     <main className="app-shell">
       <Routes>

@@ -1,3 +1,4 @@
+import { forwardRef } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -24,8 +25,10 @@ vi.mock('../../shared/auth/AuthContext', () => ({
 
 // The main-screen 3D stage mounts a real WebGL <Canvas>, which jsdom can't
 // render. These tests cover page state logic, not 3D — stub it with a marker.
+// forwardRef so MyWakppuballPage's ref={viewerRef} (used to flush a break
+// report before logout) doesn't warn about refs on a plain function component.
 vi.mock('./WakppuballViewer', () => ({
-  WakppuballViewer: () => <div data-testid="wakppuball-viewer" />
+  WakppuballViewer: forwardRef((_props: unknown, _ref: unknown) => <div data-testid="wakppuball-viewer" />)
 }));
 
 const getMainWakppuball = vi.mocked(wakppuballApi.getMainWakppuball);

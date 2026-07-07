@@ -56,6 +56,7 @@ model UserWakppuball {
   sentByA              MatchHistory[]         @relation("MatchSentByA")
   sentByB              MatchHistory[]         @relation("MatchSentByB")
 
+  @@unique([ownerUserId, acquiredFromUserId])
   @@index([ownerUserId, status])
   @@index([ownerUserId, isMain])
   @@map("user_wakppuballs")

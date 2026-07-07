@@ -11,7 +11,6 @@ Deferred items and follow-ups. Pull into a sprint by moving the item into `docs/
 ## Technical follow-ups
 
 - **Revert main-ball composition** once the backend implements `GET /wakppuballs/me/main`: point `getMainWakppuball` at `getMainWakppuballViaEndpoint`. (`CLAUDE.md` → Backend Contract Notes.)
-- **`remainingBreakCount` doesn't decrement on logout**: `break`/`session-end` are implemented and work for in-app navigation and tab-close (`pagehide`), but on logout `signOut()` clears the token before `WakppuballViewer`'s unmount effect fires its `break` report, so that request goes out unauthenticated and silently 401s. Root cause and fix direction written up in `docs/3d-interaction.md` → "알려진 버그".
 - **`POST /auth/logout` is a 501 stub** — frontend currently just clears the stored token.
 - **`@types/express` is v5 but the project runs `express@4`** — this already caused a real type error (`req.params[key]` resolves to `string | string[]` instead of `string`) when Sprint 3 added the first path-param route (`collection.routes.ts`), worked around locally with an `Array.isArray` normalization. Pin `@types/express` to `^4.17.x` and re-run `npx tsc --noEmit` in `backend/` to confirm nothing else needed the workaround.
 - **Keep `docs/api.md` in sync** — it has drifted from the implementation repeatedly; treat backend code as source of truth until it's updated.
