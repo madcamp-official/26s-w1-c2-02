@@ -14,7 +14,7 @@ const HEX_COLOR_REGEX = /^#[0-9a-f]{6}$/i;
 
 // 나중에 프리셋이 추가되면 이 배열에만 추가하면 된다.
 const PATTERN_TYPES = ['preset'] as const;
-const PATTERN_PRESET_IDS = ['dots', 'stripes'] as const;
+const PATTERN_PRESET_IDS = ['none', 'dots', 'stripes'] as const;
 const THICKNESS_PRESETS = ['thin', 'medium', 'thick'] as const;
 
 // shape가 늘어나면 이 enum과 아래 SHAPE_MODEL_URLS 매핑에만 추가하면 된다.
@@ -40,7 +40,7 @@ const fractureSchema = z.object({
 const DEFAULT_CUSTOMIZATION: z.infer<typeof customizationSchema> = {
   outerColor: '#f3d35b',
   innerColor: '#ffffff',
-  pattern: { type: 'preset', id: 'dots' },
+  pattern: { type: 'preset', id: 'none' },
   shape: 'sphere'
 };
 

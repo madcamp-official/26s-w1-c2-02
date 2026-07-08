@@ -23,7 +23,7 @@ export function WakppuballVisual({
   const innerColor = runtimeCustomization?.innerColor ?? DEFAULT_CUSTOMIZATION.innerColor;
   const patternId = runtimeCustomization?.pattern?.id;
   const pattern =
-    patternId === 'dots' || patternId === 'stripes'
+    patternId === 'none' || patternId === 'dots' || patternId === 'stripes'
       ? patternId
       : DEFAULT_CUSTOMIZATION.pattern.id;
 

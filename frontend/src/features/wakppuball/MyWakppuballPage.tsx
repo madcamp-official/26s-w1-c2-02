@@ -306,7 +306,7 @@ export function MyWakppuballPage() {
   const [name, setName] = useState('나의 왁뿌볼');
   const [outerColor, setOuterColor] = useState(DEFAULT_CUSTOMIZATION.outerColor);
   const [innerColor, setInnerColor] = useState(DEFAULT_CUSTOMIZATION.innerColor);
-  const [patternId, setPatternId] = useState<WakppuballPattern['id']>('dots');
+  const [patternId, setPatternId] = useState<WakppuballPattern['id']>(DEFAULT_CUSTOMIZATION.pattern.id);
   const [thicknessPreset, setThicknessPreset] =
     useState<WakppuballFracture['thicknessPreset']>('medium');
   const [creating, setCreating] = useState(false);
@@ -655,6 +655,9 @@ export function MyWakppuballPage() {
               <div className="field-stack">
                 <span>패턴</span>
                 <div className="segmented-control" aria-label="패턴 선택">
+                  <SegmentButton value="none" selected={patternId === 'none'} onSelect={setPatternId}>
+                    기본
+                  </SegmentButton>
                   <SegmentButton value="dots" selected={patternId === 'dots'} onSelect={setPatternId}>
                     dots
                   </SegmentButton>
@@ -711,6 +714,9 @@ export function MyWakppuballPage() {
               ref={viewerRef}
               ownedId={view.wakppuball.ownedId}
               remainingBreakCount={view.wakppuball.remainingBreakCount}
+              outerColor={(view.wakppuball.customization ?? DEFAULT_CUSTOMIZATION).outerColor}
+              innerColor={(view.wakppuball.customization ?? DEFAULT_CUSTOMIZATION).innerColor}
+              pattern={(view.wakppuball.customization ?? DEFAULT_CUSTOMIZATION).pattern}
             />
             <div className="main-ball-caption">
               {editingBallName ? (

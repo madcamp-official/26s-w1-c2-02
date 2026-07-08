@@ -228,31 +228,64 @@ Phase 4.5 로직에 영영 도달할 수 없는 죽은 코드가 됨. 근본 원
 
 ---
 
-## 다음 작업 (로드맵) — **Phase 7~8은 다른 스레드에서 진행 예정**
+## 다음 작업 (로드맵)
 
-- **Phase 7 — 색상 커스터마이징**: `outerColor`(껍질 초록 등)/`innerColor`(안쪽 볼)를
-  주입. **주의**: 이제 칠할 대상이 셋이다 — ① 껍질 세그먼트의 outer 머티리얼 슬롯,
-  ② 껍질 세그먼트의 inner(단면) 슬롯, ③ **새로 추가된 안쪽 구 머티리얼**(현재
-  `color="#ffffff"` 하드코딩된 `<meshStandardMaterial>`). ③에 `innerColor`를 꼭 같이
-  먹여야 "젤리 색"이 맞는다. 머티리얼은 40조각이 공유하므로 조각별 clone 없이 공유
-  머티리얼만 건드리면 되지만, DoubleSide+공유라 색 오버라이드 시 clone 필요할 수
-  있음(함정 2 참고). 저대비 이슈(흰 젤리/회색 껍질)가 여기서 해소됨.
-- **Phase 8 — 패턴(triplanar 셰이더)**: dots/stripes 텍스처(`assets/models/pattern-*.png`)를
-  커스텀 ShaderMaterial triplanar 투영. UV 안 씀. 껍질이 이제 얇은 세그먼트라 예전
-  전제(한 겹 셸)와 지오메트리가 달라졌다는 점 인지하고 진행.
+### Phase 7 — 색상 커스터마이징 (완료, 2026-07-08)
+
+이미 있던 `MyWakppuballPage`의 empty-state create-panel(`#outer-color`/`#inner-color`
+color input, `ColorField`)이 **그 자체로 "커스터마이제이션 페이지"**로 확정됨(별도
+라우트로 분리하지 않음 — 사람 결정). 이번 Phase의 목표는 "그 패널에서 고른 색이
+메인 화면 3D 모델에 실제로 반영되는 것"이며 그대로 달성됨. 로그아웃 상태 랜딩(와이어
+프레임의 "?" 볼 플로우)은 이번 세션 범위 밖(스코프 확정 시 보류 결정).
+
+- `WakppuballViewer`가 `outerColor`/`innerColor` prop을 받아 세 군데에 적용:
+  ① 껍질 세그먼트의 outer 머티리얼, ② 껍질 세그먼트의 inner(단면) 머티리얼,
+  ③ 안쪽 구 머티리얼(이제 `color="#ffffff"` 하드코딩 대신 `innerColor`를 그대로 먹임 —
+  "젤리 색"이 맞아떨어짐).
+- **머티리얼은 인스턴스별로 clone 필요했음**: GLB의 `outer`/`inner` 머티리얼은 40조각이
+  공유하는 것에 더해 `useGLTF` 전역 캐시의 원본 씬과도 공유된다. 색을 직접
+  `.color.set()`하면 캐시된 원본(따라서 다른 모든 뷰어 인스턴스)까지 물들어버리므로,
+  씬 clone 시점(`scene` useMemo)에 머티리얼도 `Map<원본,클론>`으로 인스턴스당 1회씩만
+  clone하고(조각마다 다시 clone하지 않음 — 40조각이 여전히 같은 클론 인스턴스 공유),
+  `mat.name`(`"outer"`/`"inner"`, GLB에 이미 있음)으로 어느 게 어느 슬롯인지 식별해
+  ref에 저장. 색 자체는 `useEffect([scene, outerColor, innerColor])`에서
+  `material.color.set(hex)`로 적용(three의 `Color.set()`이 CSS hex 문자열을 바로 받음).
+- 안쪽 구는 JSX `<meshStandardMaterial color={innerColor} .../>`라 그냥 prop만 꽂으면
+  R3F가 알아서 갱신 — 별도 ref/effect 불필요.
+- **검증**: 세션 scratchpad에 `puppeteer-core`(시스템 Chrome, foreground)로 실제
+  회원가입 → create-panel에서 outer `#22cc55`/inner `#ff2299` 선택 → 저장 →
+  메인 화면 3D 볼이 초록으로 렌더되는 것, 누르고 홀드 시 조각 틈으로 핑크 젤리가
+  비치는 것까지 스크린샷으로 확인함(2026-07-08).
+
+### Phase 8 — 패턴 (다음 세션에서 진행)
+
+- **Phase 8-A — 패턴 커스터마이징 목표 확정**: "패턴" 값을 받아 3D 모델에 실제
+  반영하는 것까지가 완료 기준(Phase 7과 동일한 기준). **UV 매핑은 쓰지 않기로
+  결정됨**(구 특성상 극점 왜곡이 생기므로) — triplanar 등 UV 아닌 다른 투영 방식으로
+  극점 왜곡을 줄이는 방향으로 진행.
+- **Phase 8-B — 패턴 커스터마이징 방식은 둘 중 구현 난이도가 더 쉬운 쪽으로 택일**:
+  (a) 유저가 업로드한 사진으로 outer 레이어를 wrap, 또는 (b) 유저가 볼 위에 직접
+  그림을 그리는 기능. 아직 결정 안 됨 — 다음 세션에서 난이도 비교 후 하나 선택.
+- 기존 `pattern-dots.png`/`pattern-stripes.png` 프리셋 에셋과 `docs/api.md`의
+  `pattern.type: "preset"` 스키마는 위 결정에 따라 유지되거나 바뀔 수 있음(현재
+  create-panel의 dots/stripes `SegmentButton`은 프론트 상태로만 존재하고 아직 3D에
+  반영되지 않음 — Phase 8이 이걸 마저 연결).
 - ~~Phase 9 — 뿌시기 효과음~~ **완료 (2026-07-07, Phase 4.5)**: 실제 사운드 파일 사용
   (`frontend/src/shared/sound/soundManager.ts`). 버튼 클릭음/BGM 토글 포함.
 - **Phase 10 — 눌림 텍스처 고도화** (후순위·선택): 크랙/스쿼시 셰이딩 자연스럽게.
   사람이 명시적으로 요청할 때만.
 
-### 남은 튜닝/정리 대상 (Phase 7 스레드가 알아둘 것)
+### 남은 튜닝/정리 대상 (Phase 8 스레드가 알아둘 것)
 - **스쿼시 "느낌" 미세튜닝은 아직 확정 아님** — 방향(압축+퍼짐, 젤리 gap 삐짐)만
   확정됨. 상수(`SHELL_COMPRESS`/`SHELL_EXPAND`/`CORE_EXPAND`/`PRESS_*`)는 라이브로
-  더 만질 수 있음. 색을 입히면 대비가 생겨 느낌 판단이 쉬워지니 Phase 7 후 재조정 권장.
+  더 만질 수 있음. 색이 입혀져 대비가 생긴 지금이 느낌 재조정하기 더 쉬움.
 - 안쪽 구 `<sphereGeometry>` 해상도는 **32×32**(매 프레임 CPU 정점 변형 + 노멀 재계산).
   bulge가 faceted해 보이면 48/64로 올리되 프레임 비용 확인.
 - `WakppuballViewer` 안 **"뿌셔진 조각: N개"/"뿌시기 횟수를 다 썼어요" 캡션**(`.wakppuball-viewer-hint`)은
   검증용 dev aid. 실제 UI로 교체하거나 Beautify 때 제거할 것.
+- 로그아웃 상태(미로그인) 랜딩 플로우(와이어프레임의 "?" 회색 볼 + "나만의 왁뿌볼
+  만들기" 버튼)는 이번 세션에서 의도적으로 보류됨 — 필요해지면 라우팅
+  변경(`RequireAuth`가 `/`를 완전히 막는 현재 구조 조정)부터 다시 스코프 확정할 것.
 
 ---
 
@@ -351,7 +384,13 @@ Phase 1~4.6 완료(회전/줌/프레스/크랙 + break 서버 연동 + 로그아
 (2026-07-08)**: 실제 안쪽 구 추가 → GLB 조각이 솔리드 웨지임을 발견하고 **radial
 remap으로 껍질을 얇게 hollowing** → 상호작용 엔진을 **소프트바디 스쿼시**(누른 방향
 압축 + 수직 퍼짐, 안쪽 볼이 껍질보다 크게 퍼져 조각 틈으로 젤리처럼 삐져나옴,
-말랑 사과 스퀴시볼 레퍼런스)로 재설계. 안쪽 볼은 흰색(무채색이라 저대비 — Phase 7이
-색 입히면 살아남). **다음: Phase 7(색상 `outerColor`/`innerColor` — 안쪽 구 머티리얼
-포함 3곳) + Phase 8(패턴 triplanar)은 별도 스레드에서 진행.** 스쿼시 "느낌" 미세튜닝
-상수는 `WakppuballViewer.tsx` 상단에 모여 있고, 방향만 확정·수치는 재조정 여지 있음.
+말랑 사과 스퀴시볼 레퍼런스)로 재설계. **Phase 7 완료(2026-07-08)**: 기존
+create-panel(`MyWakppuballPage`의 `#outer-color`/`#inner-color`)이 그대로
+커스터마이제이션 페이지로 확정됐고, 거기서 고른 `outerColor`/`innerColor`가
+`WakppuballViewer`의 세 머티리얼 슬롯(outer/inner 셸, 안쪽 구)에 실제로 반영됨을
+puppeteer로 end-to-end 검증(회원가입→생성→메인 화면 초록 볼→프레스 시 핑크 젤리
+확인). **다음: Phase 8(패턴 — UV 대신 triplanar 등으로 극점 왜곡 회피, 방식은
+사진 업로드 wrap vs 직접 그리기 중 더 쉬운 쪽으로 택일 예정)은 다음 스레드에서
+진행.** 로그아웃 상태 랜딩 플로우는 이번 세션에서 스코프 밖으로 보류됨. 스쿼시
+"느낌" 미세튜닝 상수는 `WakppuballViewer.tsx` 상단에 모여 있고, 방향만 확정·수치는
+재조정 여지 있음.

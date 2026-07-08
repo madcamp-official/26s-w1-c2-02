@@ -10,14 +10,37 @@ import {
   type ReactNode
 } from 'react';
 import { Canvas, useFrame, type ThreeEvent } from '@react-three/fiber';
-import { Html, OrbitControls, useGLTF } from '@react-three/drei';
-import { Matrix4, Mesh, Vector3, type Object3D } from 'three';
+import { Html, OrbitControls, useGLTF, useTexture } from '@react-three/drei';
+import {
+  Material,
+  Matrix4,
+  Mesh,
+  MeshStandardMaterial,
+  RepeatWrapping,
+  Vector3,
+  type Object3D,
+  type Texture,
+  type WebGLProgramParametersWithUniforms
+} from 'three';
 import { playWakppuballTouchSound } from '../../shared/sound/soundManager';
 import { breakWakppuball } from './wakppuballApi';
+import type { WakppuballPattern } from './wakppuballTypes';
 // Vite resolves this to a served asset URL. The GLB is Draco-compressed;
 // useGLTF pulls the Draco decoder from the gstatic CDN by default (needs network
 // in dev). If we ever need fully-offline dev, self-host the decoder in /public.
 import wakppuballModelUrl from '../../assets/models/wakppuball-base.glb?url';
+// Phase 8-A pattern presets. White RGB + alpha-shaped mask (dot/stripe cutouts) —
+// tinted white-over-outerColor at render time, not sampled as RGB. Deliberately NOT
+// UV-mapped (docs/3d-interaction.md): the 40 pieces are separate submeshes with
+// per-piece UV islands, and a sphere's UV has pole singularities anyway. Instead
+// they're triplanar-projected from each fragment's WORLD position (see
+// PATTERN_TRIPLANAR_GLSL below) — continuous across piece seams and pole-free.
+import patternDotsUrl from '../../assets/models/pattern-dots.png?url';
+import patternStripesUrl from '../../assets/models/pattern-stripes.png?url';
+
+const PATTERN_MODE: Record<WakppuballPattern['id'], number> = { none: 0, dots: 1, stripes: 2 };
+const PATTERN_TRIPLANAR_SCALE = 2.4; // world-space tiling frequency of the pattern textures
+const PATTERN_BLEND_STRENGTH = 0.55; // max whiteness mixed in where the mask alpha is 1
 
 // Below this pointer travel (px), a press counts as a "touch on one spot" and pops
 // the piece. Past it, the gesture is a drag → OrbitControls rotates, nothing pops.
@@ -111,6 +134,76 @@ function resolvePieceNode(object: Object3D): Object3D | null {
 
 type Piece = { node: Object3D; rest: Vector3; radial: Vector3; tangent: Vector3 };
 
+type PatternUniforms = { uPatternMode: { value: number } };
+
+// Phase 8-A: patches the outer shell's compiled MeshStandardMaterial program to
+// triplanar-project the dots/stripes alpha masks from each fragment's WORLD position,
+// instead of UV — the 40 pieces are separate submeshes (their own UV islands, seams at
+// every piece boundary) and a sphere's UV has pole singularities either way. Sampling by
+// world position/normal (all pieces share one rigid parent transform, and at rest
+// reconstruct one continuous sphere) reads as one continuous pattern across every seam
+// and has no poles. Runs once per material (onBeforeCompile fires on first compile);
+// `uPatternMode` is then live-updated via the returned uniform ref (0 keeps the material
+// a flat MeshStandardMaterial with no visible cost — the branch just isn't taken).
+function attachTriplanarPattern(material: MeshStandardMaterial, dotsMap: Texture, stripesMap: Texture): PatternUniforms {
+  const uniformsRef: PatternUniforms = { uPatternMode: { value: 0 } };
+  material.onBeforeCompile = (shader: WebGLProgramParametersWithUniforms) => {
+    shader.uniforms.uDotsMap = { value: dotsMap };
+    shader.uniforms.uStripesMap = { value: stripesMap };
+    shader.uniforms.uPatternMode = uniformsRef.uPatternMode;
+    shader.uniforms.uPatternScale = { value: PATTERN_TRIPLANAR_SCALE };
+    shader.uniforms.uPatternBlend = { value: PATTERN_BLEND_STRENGTH };
+
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying vec3 vPatternWorldPos;\nvarying vec3 vPatternWorldNormal;')
+      .replace(
+        '#include <begin_vertex>',
+        '#include <begin_vertex>\n\tvPatternWorldPos = (modelMatrix * vec4(position, 1.0)).xyz;\n\tvPatternWorldNormal = normalize(mat3(modelMatrix) * normal);'
+      );
+
+    shader.fragmentShader = shader.fragmentShader
+      .replace(
+        '#include <common>',
+        `#include <common>
+varying vec3 vPatternWorldPos;
+varying vec3 vPatternWorldNormal;
+uniform sampler2D uDotsMap;
+uniform sampler2D uStripesMap;
+uniform float uPatternMode;
+uniform float uPatternScale;
+uniform float uPatternBlend;
+
+// Box/triplanar projection: sample the mask from all 3 axis-aligned planes and blend
+// by how much the surface faces each axis — seamless across separate meshes sharing one
+// world space, and pole-free (no spherical UV involved).
+vec4 wakppuballTriplanar(sampler2D tex, vec3 worldPos, vec3 worldNormal, float scale) {
+  vec3 blendWeight = abs(worldNormal);
+  blendWeight /= max(blendWeight.x + blendWeight.y + blendWeight.z, 1e-5);
+  vec4 xTex = texture2D(tex, worldPos.yz * scale);
+  vec4 yTex = texture2D(tex, worldPos.xz * scale);
+  vec4 zTex = texture2D(tex, worldPos.xy * scale);
+  return xTex * blendWeight.x + yTex * blendWeight.y + zTex * blendWeight.z;
+}`
+      )
+      .replace(
+        '#include <color_fragment>',
+        `#include <color_fragment>
+	if (uPatternMode > 0.5) {
+		vec3 patternNormal = normalize(vPatternWorldNormal);
+		vec4 patternSample = uPatternMode < 1.5
+			? wakppuballTriplanar(uDotsMap, vPatternWorldPos, patternNormal, uPatternScale)
+			: wakppuballTriplanar(uStripesMap, vPatternWorldPos, patternNormal, uPatternScale);
+		diffuseColor.rgb = mix(diffuseColor.rgb, vec3(1.0), patternSample.a * uPatternBlend);
+	}`
+      );
+  };
+  // onBeforeCompile's code edits above are identical on every call (only the uniform
+  // *values* change afterward) — one cache key keeps three.js from needlessly
+  // recompiling/re-diffing the shader per instance.
+  material.customProgramCacheKey = () => 'wakppuball-outer-triplanar-pattern';
+  return uniformsRef;
+}
+
 // Phase 1–3: render intact + achromatic (no color/pattern yet — those come later).
 // Press deforms a radius of pieces around the hit point (compress + spread); the hit
 // piece pops permanently (cracks open). Never touches geometry — position only.
@@ -118,26 +211,67 @@ type Piece = { node: Object3D; rest: Vector3; radial: Vector3; tangent: Vector3 
 //   rest  +  permanent crack offset (if popped)  +  temporary press offset (if pressing)
 function InteractiveWakppuball({
   onPiecePopped,
-  interactionDisabled
+  interactionDisabled,
+  outerColor,
+  innerColor,
+  pattern
 }: {
   onPiecePopped: (pieceName: string) => void;
   interactionDisabled: boolean;
+  outerColor: string;
+  innerColor: string;
+  pattern: WakppuballPattern;
 }) {
   const { scene: original } = useGLTF(wakppuballModelUrl);
+  const [dotsMap, stripesMap] = useTexture([patternDotsUrl, patternStripesUrl]);
+  useMemo(() => {
+    for (const tex of [dotsMap, stripesMap]) {
+      tex.wrapS = tex.wrapT = RepeatWrapping;
+    }
+  }, [dotsMap, stripesMap]);
+  // Materials named "outer"/"inner" in the GLB (docs/3d-asset-contract.md), shared by
+  // reference across all 40 pieces' two submeshes. Filled in by the scene useMemo below;
+  // read by the color effect so outerColor/innerColor (Phase 7) can be applied/updated
+  // without re-touching geometry.
+  const outerMaterialRef = useRef<MeshStandardMaterial | null>(null);
+  const innerMaterialRef = useRef<MeshStandardMaterial | null>(null);
+  // Set by attachTriplanarPattern (Phase 8-A) when the outer material clone first
+  // compiles; the pattern-mode effect below writes into it to switch none/dots/stripes
+  // live without re-triggering a shader recompile.
+  const outerPatternUniformsRef = useRef<PatternUniforms | null>(null);
   // useGLTF caches the scene; clone per mount so cracks/depress reset every visit. Then
   // hollow the solid wedges into thin shell segments (radial remap r∈[0,1]→[SHELL_INNER,1])
   // so a large inner ball fits inside and can bulge out through the gaps. Geometry is
-  // cloned per mesh first, so we don't mutate the shared useGLTF-cached buffers.
+  // cloned per mesh first, so we don't mutate the shared useGLTF-cached buffers. Materials
+  // are cloned too (once per instance, keyed by the original) — colors are set per-ball
+  // (Phase 7), and the useGLTF scene/materials are cached globally across every viewer
+  // instance, so mutating a shared material's color would leak across balls.
   const scene = useMemo(() => {
     const s = original.clone(true);
     s.updateMatrixWorld(true);
     const local = new Vector3();
     const world = new Vector3();
     const inv = new Matrix4();
+    const materialClones = new Map<Material, Material>();
+    function cloneMaterial(mat: Material): Material {
+      let clone = materialClones.get(mat);
+      if (!clone) {
+        clone = mat.clone();
+        materialClones.set(mat, clone);
+        if (clone.name === 'outer') {
+          outerMaterialRef.current = clone as MeshStandardMaterial;
+          outerPatternUniformsRef.current = attachTriplanarPattern(clone as MeshStandardMaterial, dotsMap, stripesMap);
+        } else if (clone.name === 'inner') {
+          innerMaterialRef.current = clone as MeshStandardMaterial;
+        }
+      }
+      return clone;
+    }
     s.traverse((node) => {
       const mesh = node as Mesh;
       if (!mesh.isMesh || !mesh.geometry) return;
       mesh.geometry = mesh.geometry.clone();
+      mesh.material = Array.isArray(mesh.material) ? mesh.material.map(cloneMaterial) : cloneMaterial(mesh.material);
       const pos = mesh.geometry.attributes.position;
       inv.copy(mesh.matrixWorld).invert();
       for (let i = 0; i < pos.count; i++) {
@@ -158,7 +292,23 @@ function InteractiveWakppuball({
       mesh.geometry.computeBoundingBox();
     });
     return s;
-  }, [original]);
+  }, [original, dotsMap, stripesMap]);
+
+  // Phase 7: outer shell + inner (cross-section) materials follow the ball's
+  // customization. Runs on scene rebuild too, since the memo above assigns fresh
+  // material clones each time.
+  useEffect(() => {
+    outerMaterialRef.current?.color.set(outerColor);
+    innerMaterialRef.current?.color.set(innerColor);
+  }, [scene, outerColor, innerColor]);
+
+  // Phase 8-A: pattern mode is a live uniform (see attachTriplanarPattern), so switching
+  // none/dots/stripes doesn't need a shader recompile.
+  useEffect(() => {
+    if (outerPatternUniformsRef.current) {
+      outerPatternUniformsRef.current.uPatternMode.value = PATTERN_MODE[pattern.id];
+    }
+  }, [scene, pattern.id]);
 
   // Every piece with its rest position and radial (origin→rest) direction, once.
   const pieces = useMemo<Piece[]>(() => {
@@ -341,7 +491,10 @@ function InteractiveWakppuball({
     <primitive object={scene} onPointerDown={handlePointerDown}>
       <mesh ref={coreRef}>
         <sphereGeometry args={[INNER_CORE_RADIUS, 32, 32]} />
-        <meshStandardMaterial color="#ffffff" roughness={0.25} />
+        {/* Phase 7: the "jelly" that oozes through the shell gaps is the innerColor
+            slot too (docs/3d-interaction.md roadmap called out 3 material slots —
+            outer, inner cross-section, and this core — innerColor feeds both). */}
+        <meshStandardMaterial color={innerColor} roughness={0.25} />
       </mesh>
     </primitive>
   );
@@ -377,8 +530,8 @@ export type WakppuballViewerHandle = {
 
 export const WakppuballViewer = forwardRef<
   WakppuballViewerHandle,
-  { ownedId: string; remainingBreakCount: number }
->(function WakppuballViewer({ ownedId, remainingBreakCount }, ref) {
+  { ownedId: string; remainingBreakCount: number; outerColor: string; innerColor: string; pattern: WakppuballPattern }
+>(function WakppuballViewer({ ownedId, remainingBreakCount, outerColor, innerColor, pattern }, ref) {
   // Evaluated once against the count as loaded — not re-checked live against
   // pops made *this* session, since the server decrement itself only lands
   // when the session ends (see reportBreakIfNeeded). Started this session
@@ -458,7 +611,13 @@ export const WakppuballViewer = forwardRef<
         />
         <ModelErrorBoundary>
           <Suspense fallback={<Html center>3D 불러오는 중…</Html>}>
-            <InteractiveWakppuball onPiecePopped={handlePiecePopped} interactionDisabled={interactionDisabled} />
+            <InteractiveWakppuball
+              onPiecePopped={handlePiecePopped}
+              interactionDisabled={interactionDisabled}
+              outerColor={outerColor}
+              innerColor={innerColor}
+              pattern={pattern}
+            />
           </Suspense>
         </ModelErrorBoundary>
       </Canvas>
