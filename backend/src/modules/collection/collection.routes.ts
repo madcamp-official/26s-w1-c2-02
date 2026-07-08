@@ -37,9 +37,8 @@ collectionRouter.get(
           }
         }
       },
-      orderBy: {
-        acquiredAt: 'desc'
-      }
+      // 남은 뿌시기 횟수가 많은 순 — 동률이면 최근 획득 순으로 안정적인 2차 정렬.
+      orderBy: [{ remainingBreakCount: 'desc' }, { acquiredAt: 'desc' }]
     });
 
     res.json({

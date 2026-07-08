@@ -435,6 +435,8 @@
 
 `CONSUMED` 상태의 왁뿌볼은 컬렉션 목록에 포함하지 않는다. `isCampusMatch`는 이 볼을 준 상대와의 매칭이 양쪽 다 캠퍼스 반경 안에서 이뤄졌는지(자신이 생성한 볼은 항상 `false`) — 매칭 대기열 입장 섹션 참고.
 
+정렬 순서는 `remainingBreakCount` 내림차순(남은 뿌시기 횟수가 많은 순)이고, 동률이면 `acquiredAt` 내림차순(최근 획득 순)으로 2차 정렬한다. (예전에는 `acquiredAt` 내림차순 단일 기준이었다.)
+
 ### 대표 왁뿌볼 선택
 
 `POST /collection/:ownedId/select-main`
