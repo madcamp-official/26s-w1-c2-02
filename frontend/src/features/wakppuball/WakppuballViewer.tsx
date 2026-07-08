@@ -22,7 +22,7 @@ import {
   type Texture,
   type WebGLProgramParametersWithUniforms
 } from 'three';
-import { playWakppuballTouchSound } from '../../shared/sound/soundManager';
+import { playWakppuballCrackSound, playWakppuballSqueezeSound } from '../../shared/sound/soundManager';
 import { breakWakppuball } from './wakppuballApi';
 import type { WakppuballPattern } from './wakppuballTypes';
 // Vite resolves this to a served asset URL. The GLB is Draco-compressed;
