@@ -369,13 +369,24 @@ function InteractiveWakppuball({
     }
 
     let cancelled = false;
-    new TextureLoader().load(resolveUploadedAssetUrl(pattern.imageUrl), (texture) => {
-      if (cancelled) return;
-      texture.wrapS = texture.wrapT = RepeatWrapping;
-      texture.colorSpace = SRGBColorSpace;
-      uniforms.uCustomMap.value = texture;
-      uniforms.uPatternMode.value = PATTERN_MODE.custom;
-    });
+    new TextureLoader().load(
+      resolveUploadedAssetUrl(pattern.imageUrl),
+      (texture) => {
+        if (cancelled) return;
+        texture.wrapS = texture.wrapT = RepeatWrapping;
+        texture.colorSpace = SRGBColorSpace;
+        uniforms.uCustomMap.value = texture;
+        uniforms.uPatternMode.value = PATTERN_MODE.custom;
+      },
+      undefined,
+      (error) => {
+        // The skin URL is persisted server-side, but the fetch can still fail
+        // (file deleted, transient network). Log it instead of failing silently
+        // — the ball keeps whatever pattern was showing before.
+        if (cancelled) return;
+        console.error('커스텀 왁뿌볼 스킨 텍스처를 불러오지 못했습니다.', error);
+      }
+    );
     return () => {
       cancelled = true;
     };
