@@ -70,6 +70,13 @@
     from var(--bg-overlay-cyan-base) calc(h + var(--theme-hue-shift)) calc(s * var(--theme-sat-mult))
       calc(l * var(--theme-light-mult)) / alpha
   );
+  /* Same hue-rotation as --lava-violet, but always full opacity — a solid
+     (not translucent) accent for marking "this is mine", e.g. the
+     collection-tile border on the ball you created yourself. */
+  --accent-solid: hsl(
+    from var(--lava-violet-base) calc(h + var(--theme-hue-shift)) calc(s * var(--theme-sat-mult))
+      calc(l * var(--theme-light-mult))
+  );
 
   /* Corner scale. Apple's continuous "squircle" corner has no exact CSS
      equivalent, so this approximates it with generous radii plus a
@@ -1131,9 +1138,18 @@ a {
   transform: scale(0.97);
 }
 
+/* Only a box-shadow ring (not border-color) so this composes cleanly with
+   --created below when a tile is both the main ball AND self-made. */
 .collection-tile--main {
-  border-color: rgba(255, 255, 255, 0.6);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.32), 0 0 0 1px rgba(255, 255, 255, 0.2);
+}
+
+/* Marks the wakppuball the user made themselves (acquiredType === 'CREATED')
+   with a bold, saturated border — distinct at a glance from matched-in
+   balls, and independent of whether it's currently set as main. */
+.collection-tile--created {
+  border-width: 2px;
+  border-color: var(--accent-solid);
 }
 
 .collection-tile .wakppuball-visual {
