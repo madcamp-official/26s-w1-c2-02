@@ -116,25 +116,9 @@ wakppuballsRouter.get('/me/main', (_req, res) => {
 wakppuballsRouter.post(
   '/upload-skin',
   requireAuth,
-  (req, res, next) => {
-    skinUpload.single('file')(req, res, (err: unknown) => {
-      if (!err) {
-        next();
-        return;
-      }
-      if (err instanceof multer.MulterError && err.code === 'LIMIT_FILE_SIZE') {
-        next(
-          new ApiError(
-            400,
-            'FILE_TOO_LARGE',
-            `이미지는 ${SKIN_MAX_UPLOAD_BYTES / (1024 * 1024)}MB 이하만 업로드할 수 있습니다.`
-          )
-        );
-        return;
-      }
-      next(err);
-    });
-  },
+  // multer errors (e.g. LIMIT_FILE_SIZE) propagate to the shared errorHandler,
+  // which normalizes MulterError → 400 (see common/api-error.ts).
+  skinUpload.single('file'),
   asyncHandler(async (req: AuthenticatedRequest, res) => {
     if (!req.user) {
       throw new ApiError(401, 'UNAUTHORIZED', '로그인이 필요합니다.');
