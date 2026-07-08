@@ -1,10 +1,10 @@
-# 26s-w1-c2-02
+# 캠퍼스왁뿌볼 (campuswakppu)
 
-## 공통과제 I : 웹 기반 프로젝트 (2인 1팀)
+> KAIST 몰입캠프 공통과제 I : 웹 기반 프로젝트 (2인 1팀)
 
-**목적:** 공통 과제를 함께 수행하며 웹 개발의 전체 흐름을 빠르게 익히고 협업에 적응하기
+**한 줄 소개:** 인터넷만 연결되어 있다면 언제 어디서든, 현실의 왁뿌볼을 그대로 만지고 뿌실 수 있는 온라인 스트레스 해소 서비스입니다. 간편하게 회원가입하고, 나만의 왁뿌볼을 만들어 다른 사람과 교환하며 만지작거려보세요.
 
-**결과물:** 기획부터 배포까지 완료된 웹 서비스와 관련 문서 일체
+**슬로건:** 왁뿌볼, 이제 사지 말고 접속하세요.
 
 ---
 
@@ -12,80 +12,242 @@
 
 | 이름 | GitHub | 역할 |
 |---|---|---|
-| 김도현 | KimDoDohyeon |  |
-| 임유빈 | lunar-yoobin |  |
+| 김도현 | [KimDoDohyeon](https://github.com/KimDoDohyeon) | Backend, KCLOUD Deploy |
+| 임유빈 | [lunar-yoobin](https://github.com/lunar-yoobin) | Frontend, 3D 모델 Three.js |
+
+---
+
+## 프로젝트 소개
+
+### 기획 의도
+
+현대인들은 쏟아지는 서비스와 빠르게 바뀌는 세상 속에서 늘 크고 작은 피로를 안고 살아간다. 캠퍼스왁뿌볼은 그런 사람들이 잠깐이라도 화면 앞에서 왁뿌볼을 조몰락거리며 스트레스를 내려놓고, 좋아하는 배경음악을 들으며 잠시 명상하듯 쉬어갈 수 있는 작은 온라인 휴식처를 만들고자 기획했다.
+
+### 주요 기능
+
+- **계정 생성 / 로그인** — 한글 유저네임을 지원하는 JWT 기반 회원가입·로그인
+- **나만의 왁뿌볼 만들기** — 색상, 패턴, 두께를 직접 골라 커스터마이징
+- **왁뿌볼 만지기** — 3D 모델을 회전·확대/축소하고, 눌러서 조각을 뿌시는 인터랙션 (React Three Fiber)
+- **다른 사람과 교환하기** — 매칭 대기열을 통해 낯선 상대와 왁뿌볼을 교환, 캠퍼스 안에서 매칭되면 전용 뱃지 획득
+- **내 컬렉션** — 내가 만든 왁뿌볼과 교환으로 받은 왁뿌볼을 한눈에 확인, 대표 왁뿌볼 지정
+- **BGM 듣기** — 4가지 배경음악 중 원하는 트랙 선택
+- **배경 테마 꾸미기** — 7가지 색상 × 2가지 톤, 총 14가지 배경 테마 중 선택
+- **랭킹 조회하기** — 누적 뿌시기 횟수 / 누적 매칭 유저 수 기준 리더보드와 백분위 티어(마스터~브론즈) 확인
+
+### 스크린샷 / 데모
+
+<!-- 움짤 4개 이상 혹은 20초 이상의 데모 영상(또는 사진 4장 이상) 추가 예정 -->
+
+---
+
+## 시스템 아키텍처
+
+```txt
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                            Web Client (Frontend)                            │
+│                                                                             │
+│ ┌────────────┐ ┌────────────┐ ┌────────────┐ ┌────────────┐ ┌─────────────┐ │
+│ │   Login    │ │ Main (3D)  │ │ Collection │ │  Matching  │ │ Leaderboard │ │
+│ └────────────┘ └────────────┘ └────────────┘ └────────────┘ └─────────────┘ │
+│                                                                             │
+│                          REST (fetch) + JWT Bearer                          │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                       │
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         Express Backend (TypeScript)                        │
+│                                                                             │
+│      ┌────────┐ ┌────────┐ ┌─────────────┐ ┌────────────┐ ┌──────────┐      │
+│      │  Auth  │ │ Users  │ │ Wakppuballs │ │ Collection │ │ Matching │      │
+│      └────────┘ └────────┘ └─────────────┘ └────────────┘ └──────────┘      │
+│                                                                             │
+│                         Leaderboard / Stats (Tiers)                         │
+│                                                                             │
+│                                  Prisma ORM                                 │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                       │
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                                  PostgreSQL                                 │
+│                      (Users / Balls / Matches / Queue)                      │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+                      Deploy: KCLOUD (infra/aws-notes.md)
+```
+
+---
+
+## 기술스택
+
+### Frontend
+
+| 기술 | 구현한 기능 |
+|---|---|
+| React 18 + TypeScript | 화면별 컴포넌트, 4가지 상태(로딩/에러/빈 상태/성공) 처리 |
+| React Router | 로그인/메인/컬렉션/매칭 페이지 라우팅 |
+| Vite | 개발 서버, 번들링, 백엔드 API 프록시 |
+| Three.js + @react-three/fiber + drei | 왁뿌볼 3D 모델 렌더링, 회전/줌/프레스-뿌시기 인터랙션 |
+| CSS Custom Properties | 라바램프 배경 애니메이션, 글래스모피즘 UI, 14색 배경 테마 시스템 |
+| Vitest + Testing Library | 컴포넌트 단위 테스트 |
+
+### Backend
+
+| 기술 | 구현한 기능 |
+|---|---|
+| Express + TypeScript | REST API 서버, 모듈별 라우터(auth/users/wakppuballs/collection/matching/leaderboard) |
+| Prisma + PostgreSQL | ORM, 스키마 마이그레이션 |
+| jsonwebtoken + bcrypt | 로그인 인증(JWT 발급/검증), 비밀번호 해싱 |
+| Zod | 요청 바디 검증 |
+| Docker Compose | 로컬 개발용 PostgreSQL 컨테이너 |
+
+### Infra
+
+| 기술 | 용도 |
+|---|---|
+| KCLOUD | 백엔드/DB 배포 |
+
+---
+
+## Getting Started
+
+```bash
+# 1. 의존성 설치 (workspace 루트에서)
+npm install
+
+# 2. 환경 변수 설정
+cp .env.example .env
+# DATABASE_URL, JWT_SECRET 등을 채운다
+
+# 3. 로컬 PostgreSQL 실행 (Docker)
+npm run db:dev
+
+# 4. DB 마이그레이션 적용
+cd backend && npx prisma migrate dev && cd ..
+
+# 5. 백엔드 실행 (http://localhost:3000)
+npm run dev:backend
+
+# 6. 프론트엔드 실행 (http://localhost:5173, /api는 3000번으로 프록시)
+npm run dev:frontend
+```
+
+테스트: `npm test -w frontend`
 
 ---
 
 ## 기획안
 
-> 프로젝트 주제, 목적, 핵심 기능, 예상 사용자, 팀원별 역할 등 정리
-
-- **주제:** 캠퍼스 온라인 왁뿌볼
-- **목적:** end to end 웹사이트 개발 과정 경험
-- **핵심 기능:** 유저별로 보유한 왁뿌볼을 터치를 통해 만지고 뿌시는 기능
-- **예상 사용자:** 카이스트 캠퍼스 내의 모든 사람
+> 아직 미완성, 추후 작성 예정
 
 ---
 
 ## 기능 명세서
 
-> 구현할 기능을 사용자 관점에서 정리하고, 필수 기능과 선택 기능을 구분
-
-### 필수 기능
-
-- [ ] 내 왁뿌볼 메인 화면
-    - [ ] 3D 왁뿌볼 표시
-    - [ ] 만지기, 누르기, 뿌시기 인터랙션
-    - [ ] 뿌시기 가능 횟수 표시 및 차감
-    - [ ] 뿌시기 횟수 0 이후 대표 왁뿌볼에서 내려가거나 접속 종료 시 소멸 처리
-- [ ] 왁뿌볼 커스텀하기
-    - [ ] 내 왁뿌볼 생성하기
-    - [ ] 색상, 형태, 장식 등 설정
-- [ ] 왁뿌볼 저장하기
-    - [ ] 만든 왁뿌볼을 내 계정에 저장
-    - [ ] 저장 여부가 매칭 가능 조건
-- [ ] 내 컬렉션
-    - [ ] 내가 만든/받은 왁뿌볼을 확인
-    - [ ] 특정 왁뿌볼을 선택해서 메인에 띄움
-    - [ ] 소멸된 왁뿌볼은 컬렉션에서 제외
-- [ ] 매칭하기
-    - [ ] 다른 사용자와 왁뿌볼을 교환
-- [ ] 로그인/회원가입
-    - [ ] 저장, 컬렉션, 매칭을 위해 필요
-
-### 선택 기능
-
-- [ ] 이메일 인증
-- [ ] gps 위치 인증
-- [ ] 유저 정보 팝업
-- [ ] 
+> 아직 미완성, 추후 작성 예정
 
 ---
 
 ## IA 및 화면 설계서
 
-> 서비스의 전체 페이지 구조와 페이지 간 이동 흐름; 각 페이지의 주요 UI 구성, 입력 요소, 버튼, 사용자 행동 흐름 등을 간단한 와이어프레임 형태로 정리
-
-<!-- Figma 링크 또는 이미지 첨부 -->
+- [와이어프레임](docs/캠퍼스왁뿌볼_와이어프레임.png)
+- [개별 화면 설계](docs/캠퍼스왁뿌볼_개별화면.pdf)
 
 ---
 
 ## DB 스키마
 
-> 필요한 테이블, 주요 필드, 데이터 타입, 테이블 간 관계를 정리
+```mermaid
+erDiagram
+    USERS ||--o{ WAKPPUBALL_MODELS : creates
+    USERS ||--o{ USER_WAKPPUBALLS : owns
+    USERS ||--o{ USER_WAKPPUBALLS : "acquired from"
+    WAKPPUBALL_MODELS ||--o{ USER_WAKPPUBALLS : "instance of"
+    USERS ||--o{ MATCH_HISTORY : "as user A"
+    USERS ||--o{ MATCH_HISTORY : "as user B"
+    USER_WAKPPUBALLS ||--o{ MATCH_HISTORY : "sent by A"
+    USER_WAKPPUBALLS ||--o{ MATCH_HISTORY : "sent by B"
+    USERS ||--o{ LOCATION_VERIFICATION_LOGS : logs
+    USERS ||--o{ MATCHING_QUEUE_ENTRIES : queues
+    USER_WAKPPUBALLS ||--o{ MATCHING_QUEUE_ENTRIES : "used in"
+    MATCH_HISTORY ||--o{ MATCHING_QUEUE_ENTRIES : resolves
 
-<!-- ERD 이미지 또는 테이블 정의 -->
+    USERS {
+        bigint id PK
+        varchar username UK
+        varchar password_hash
+        int total_acquired_count
+        int total_break_count
+        int distinct_matched_user_count
+        timestamp created_at
+    }
 
-[![](https://mermaid.ink/img/pako:eNqdVduOmzAQ_RXLT62UjRIICeEtaVVVWq3al6pSS4UmYMAt2NSXzWaT_Psaw-ZCLtuUF5iZM7czY7zGMU8IDjARHylkAsqQIfNoSYREm83dHV-jJfypKr2Aongw4EKiAMWCgCLyDLgWvu8caixfsg6w3z8LlFyLmHxJZ_FfTSVVlLOQNZ4nJVzMJkhKBGExSearV--jAktQcf6ZSsXFyuArEIrGtKrbmcnZrQ7z6_V1fCVhar6a_YfP_KiXnyG27xD_QutGXz8LmlGmEE3Q1_u9VipBWWYdGZQEfbtHIX4EEecg3jmD9yE-wVYg5ZKLJMpB5odozzuCJ4YERU3MZh-SCFRj3F4anKl8r4pKq_unLlqtTcRFVHcTGcin00Ztk_uaveMOFXlSyOaNtCg6epXrcsGAdmy_JWco1mYiJX2Gei-jWtUBpAJipQXp2N7mqLPE7XCjPU83MWSOGznPTwvo8n-BRqhPoTD1qlVV89mWjzbNgtqvjKaNijyaLT2kuc21C5IKXh4UZeIxXRSwKMiRF-cFAYaojEqg50jcBTxh8fDYGAqtGOWNfAt_tki4wJ01Lq4ZIaoP7MHwrkd6A7zru-X8sG3cw5mgCQ6U0KSHSyIMZ0bEttMQq5yUht3AfCYkBV3YAW2NWwXsB-flq6fgOstxkEIhjaSrOml7G-y05peaEPGBa6ZwMBxPbBAcrPETDsZe3_U913MHvu9O_GkPr3DgeP2BNxo6I991hp7rOtsefrZJB33fdyZT1xs5Y_P2pm4Pk4SaOT00d5G9krYv_KAskg?type=png)](https://mermaid.live/edit#pako:eNqdVduO2jAQ_RXLT60ECAhmIW_Qqqq0WrUvVaU2VTQkDnGb2Kkvy7LAv6_jZCGEy5bmJZmZM7cz43iDIxFT7GMqPzJYSsgDjuxjFJUKbbfdrtigFfwpCrOALHuw4EwhH0WSgqbqDLgUvu8dSqxY8Raw1zsLVMLIiH5JZtFfwxTTTPCAV54nJVzMJmlCJeURjefrV--jAnPQUfqZKS3k2uILkJpFrCjbmanZrQ7z6_W1fBXler6e_YfP_KiXnwF27wD_QptKXz4LtmRcIxajr_cHrdKS8aVz5JBT9O0eBfgRZJSCfDfsvw_wCbYApVZCxmEKKm2iCTmCx5YEzWzMah_iEHRl3F0anK38oApzp_unLmqtSyRkWHYTWsin00Zdk4eayXGHmj5p5PKGRmYtvU5NvuDAWrbfSnAUGTuRnD1DuZdhqWoBEgmRNpK2bG9z1FrierjhgaebGLLHjZ7npwa0-b9AI5SnUNp69boo-azLR9tqQd3XkiWVij7aLW3SXOfaB0mkyBtF2XjcZBksMnrkJURGgSOmwhzYORL3AU9YbB4bS6ETw7SSb-HPFQkXuHPGxTUjhOWBbQzveqQ3wPu-a86bbeMOXkoWY19LQzs4p9JyZkXsOg2wTmlu2fXtZ0wTMJkb0M66FcB_CJG_ekphlin2E8iUlUxRJq1vg73W_lJjKj8IwzX2B57ngmB_g5-wT0jPmxBvOhh6xCMDMu7gNfa7Xm86IpPRdEzu-mRyNxjvOvjZpe33JpPh3dQjo-HYvsnUhqMxs5N6qG4jdyntXgBNgi0B)
+    WAKPPUBALL_MODELS {
+        bigint id PK
+        bigint creator_user_id FK
+        varchar name
+        text model_url
+        text thumbnail_url
+        json customization_json
+        json fracture_json
+        int default_break_count
+        timestamp created_at
+    }
+
+    USER_WAKPPUBALLS {
+        bigint id PK
+        bigint owner_user_id FK
+        bigint wakppuball_model_id FK
+        enum acquired_type
+        bigint acquired_from_user_id FK
+        boolean is_main
+        int remaining_break_count
+        enum status
+        boolean is_campus_match
+        timestamp acquired_at
+        timestamp consumed_at
+    }
+
+    MATCH_HISTORY {
+        bigint id PK
+        bigint user_a_id FK
+        bigint user_b_id FK
+        bigint user_a_sent_wakppuball_id FK
+        bigint user_b_sent_wakppuball_id FK
+        timestamp matched_at
+    }
+
+    LOCATION_VERIFICATION_LOGS {
+        bigint id PK
+        bigint user_id FK
+        boolean passed
+        timestamp checked_at
+    }
+
+    MATCHING_QUEUE_ENTRIES {
+        bigint id PK
+        bigint user_id FK
+        bigint wakppuball_owned_id FK
+        enum status
+        boolean location_verified
+        bigint match_history_id FK
+        bigint received_wakppuball_id FK
+        timestamp entered_at
+        timestamp updated_at
+    }
+```
 
 ---
 
 ## API 문서
 
-> API 주소, 요청 방식, 요청값, 응답값, 에러 상황을 정리
+| 그룹 | 주요 엔드포인트 |
+|---|---|
+| 인증 Auth | `POST /auth/signup`, `POST /auth/login` |
+| 유저 Users | `GET /users/me`, `PATCH /users/me` |
+| 왁뿌볼 Wakppuballs | `GET /wakppuballs/me/main`, `POST /wakppuballs`, `PATCH /wakppuballs/me/created`, `POST /wakppuballs/:ownedId/break` |
+| 컬렉션 Collection | `GET /collection`, `POST /collection/:ownedId/select-main` |
+| 매칭 Matching | `POST /matching/queue`, `DELETE /matching/queue`, `GET /matching/status` |
+| 리더보드 Leaderboard | `GET /leaderboard` |
 
-[API 문서 초안](docs/api.md)
+전체 요청/응답 스펙, 에러 코드, 필드 설명은 [API 문서](docs/api.md)에 정리되어 있다.
 
 ---
 
@@ -93,12 +255,20 @@
 
 ```txt
 26s-w1-c2-02/
-  frontend/    # React/Vite 웹 클라이언트
-  backend/     # Express/TypeScript API 서버
-  docs/        # API, DB, ERD 등 설계 문서
-  infra/       # 로컬 개발/배포 인프라 메모
-  scripts/     # 문서/디자인 생성 보조 스크립트
-  outputs/     # 생성 산출물
+├── frontend/                 # React + Vite 클라이언트
+│   ├── src/
+│   │   ├── features/         # 화면별 기능 단위 (auth, wakppuball, collection, matching, leaderboard)
+│   │   ├── shared/           # 공통 API 클라이언트, 인증, 사운드, 테마, 뱃지 유틸
+│   │   └── assets/           # 3D 모델(GLB), 패턴 텍스처
+│   └── public/               # 정적 파일 (BGM/효과음, 티어·캠퍼스 뱃지 이미지)
+├── backend/                  # Express + TypeScript API 서버
+│   ├── src/
+│   │   ├── modules/          # auth, users, wakppuballs, collection, matching, leaderboard, stats
+│   │   └── common/           # 인증 미들웨어, 공통 에러 처리 등
+│   └── prisma/                # DB 스키마 및 마이그레이션
+├── docs/                      # API 문서, DB 스키마, 3D 에셋 계약, 와이어프레임 등 설계 문서
+├── infra/                     # 로컬 개발/배포 인프라 메모 (Docker, KCLOUD)
+└── README.md
 ```
 
 ---
@@ -108,20 +278,16 @@
 > 접속 가능한 링크, 실행 방법, 주요 구현 내용
 
 - **서비스 URL:**
-- **실행 방법:**
-
-```bash
-npm install
-npm run db:dev
-npm run dev:backend
-npm run dev:frontend
-```
+- **실행 방법:** [Getting Started](#getting-started) 참고
+- **주요 구현 내용:** 회원가입/로그인, 왁뿌볼 생성 및 3D 인터랙션(회전/줌/뿌시기), 매칭을 통한 왁뿌볼 교환(캠퍼스 매칭 뱃지 포함), 내 컬렉션 관리, BGM/배경 테마 커스터마이징, 리더보드 및 티어 시스템
 
 ---
 
 ## 회고 문서
 
 > 개발 과정에서의 어려움, 해결 방법, 역할 분담, 다음에 개선할 점 (KPT 방법론 참고)
+>
+> 아직 미완성, 추후 작성 예정
 
 ### Keep
 
