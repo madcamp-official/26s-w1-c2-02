@@ -1,19 +1,22 @@
 // Filenames matched to what's actually in frontend/public/sound_effect/ —
-// add a file there and its path here to add more variety to a pool. The 4th
-// crack sound started as a .flac (Safari doesn't reliably play that in
-// <audio>) and was converted to PCM16 .wav via `afconvert -f WAVE -d LEI16`.
+// add a file there and its path here to add more variety to a pool. These
+// were delivered as .mov (QuickTime) containers wrapping a single audio
+// track; <audio> can't reliably play .mov, so they were extracted to AAC
+// .m4a via `afconvert -f m4af -d aac`.
 const CRACK_SOUND_URLS = [
-  '/sound_effect/wakppu_crack/150479__davdud101__egg-crack.mp3',
-  '/sound_effect/wakppu_crack/627927__pandartb3d__smashed-egg.wav',
-  '/sound_effect/wakppu_crack/703115__franzzle__crush1.wav',
-  '/sound_effect/wakppu_crack/624163__wwstudioswastaken__ice_cracking_01.wav'
+  '/sound_effect/wakppu_crack/wakppu_crack_1.m4a',
+  '/sound_effect/wakppu_crack/wakppu_crack_2.m4a',
+  '/sound_effect/wakppu_crack/wakppu_crack_3.m4a',
+  '/sound_effect/wakppu_crack/wakppu_crack_4.m4a',
+  '/sound_effect/wakppu_crack/wakppu_crack_5.m4a',
+  '/sound_effect/wakppu_crack/wakppu_crack_6.m4a',
+  '/sound_effect/wakppu_crack/wakppu_crack_7.m4a'
 ];
 
 const SQUEEZE_SOUND_URLS = [
-  '/sound_effect/wakppu_squeeze/433839__archos__slime-28.wav',
-  '/sound_effect/wakppu_squeeze/589613__mrfossy__sfx_squelch_squeeze_short_35.wav',
-  '/sound_effect/wakppu_squeeze/589835__mrfossy__sfx_squelch_slayer_214.wav',
-  '/sound_effect/wakppu_squeeze/590032__mrfossy__sfx_squelch_slayer_impulse_164.wav'
+  '/sound_effect/wakppu_squeeze/wakppu_squeeze_1.m4a',
+  '/sound_effect/wakppu_squeeze/wakppu_squeeze_2.m4a',
+  '/sound_effect/wakppu_squeeze/wakppu_squeeze_3.m4a'
 ];
 
 // glass_004.ogg is intentionally absent here — the file was already missing
@@ -27,7 +30,14 @@ const BUTTON_CLICK_SOUND_URLS = [
   '/sound_effect/button_click/glass_006.ogg'
 ];
 
-const BGM_URL = '/sound_effect/bgm/delosound-ambient-background-339939.mp3';
+// Four BGM tracks were delivered; one is picked at random per session when the
+// singleton audio is first created (see getBgmAudio).
+const BGM_URLS = [
+  '/sound_effect/bgm/bgm1.mp3',
+  '/sound_effect/bgm/bgm2.mp3',
+  '/sound_effect/bgm/bgm3.mp3',
+  '/sound_effect/bgm/bgm4.mp3'
+];
 
 function pickRandom<T>(items: readonly T[]): T {
   return items[Math.floor(Math.random() * items.length)];
@@ -43,11 +53,15 @@ function playOneShot(url: string, volume: number) {
   void audio.play().catch(() => {});
 }
 
-// Touching a piece plays one crack sound and one squeeze sound together, so
-// the combination varies every time (3 x 4 = 12 possible pairs).
-export function playWakppuballTouchSound() {
-  playOneShot(pickRandom(CRACK_SOUND_URLS), 0.8);
+// Squeeze plays every time a piece is touched/pressed (before any crack
+// judgement). Crack plays separately, only when a piece actually pops (its
+// break is registered) — see WakppuballViewer.tsx.
+export function playWakppuballSqueezeSound() {
   playOneShot(pickRandom(SQUEEZE_SOUND_URLS), 0.8);
+}
+
+export function playWakppuballCrackSound() {
+  playOneShot(pickRandom(CRACK_SOUND_URLS), 0.8);
 }
 
 export function playButtonClickSound() {
@@ -59,7 +73,7 @@ export function playButtonClickSound() {
 let bgmAudio: HTMLAudioElement | null = null;
 function getBgmAudio(): HTMLAudioElement {
   if (!bgmAudio) {
-    bgmAudio = new Audio(BGM_URL);
+    bgmAudio = new Audio(pickRandom(BGM_URLS));
     bgmAudio.loop = true;
     bgmAudio.volume = 0.35;
   }

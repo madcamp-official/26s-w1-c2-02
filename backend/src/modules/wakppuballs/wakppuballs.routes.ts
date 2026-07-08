@@ -122,6 +122,8 @@ wakppuballsRouter.post(
         }
       });
 
+      // Creating a ball no longer bumps totalAcquiredCount — that counter is
+      // now a pure match-count (see 20260708100000_... migration).
       const owned = await tx.userWakppuball.create({
         data: {
           ownerUserId,
@@ -130,17 +132,6 @@ wakppuballsRouter.post(
           isMain: shouldSetAsMain,
           remainingBreakCount: model.defaultBreakCount,
           status: 'ACTIVE'
-        }
-      });
-
-      await tx.user.update({
-        where: {
-          id: ownerUserId
-        },
-        data: {
-          totalAcquiredCount: {
-            increment: 1
-          }
         }
       });
 
@@ -235,10 +226,18 @@ wakppuballsRouter.post(
       // client-side once remainingBreakCount is 0). The only way it goes back
       // up is a new match with the same partner refilling it
       // (createOrRefillMatchedOwnedWakppuball, matching.routes.ts).
-      return tx.userWakppuball.update({
-        where: { id: targetId },
-        data: { remainingBreakCount: { decrement: 1 } }
-      });
+      const [updatedBall] = await Promise.all([
+        tx.userWakppuball.update({
+          where: { id: targetId },
+          data: { remainingBreakCount: { decrement: 1 } }
+        }),
+        // Lifetime counter, regardless of which ball — never decrements.
+        tx.user.update({
+          where: { id: ownerUserId },
+          data: { totalBreakCount: { increment: 1 } }
+        })
+      ]);
+      return updatedBall;
     });
 
     res.status(200).json({

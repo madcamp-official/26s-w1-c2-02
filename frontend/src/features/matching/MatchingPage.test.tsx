@@ -38,6 +38,7 @@ const matchedResult: MatchedResult = {
     },
     fracture: { thicknessPreset: 'medium' },
     acquiredType: 'MATCHED',
+    isCampusMatch: true,
     remainingBreakCount: 3,
     status: 'ACTIVE',
     acquiredAt: '2026-07-06T12:00:00.000Z'

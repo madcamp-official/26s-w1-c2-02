@@ -5,6 +5,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { authRouter } from './modules/auth/auth.routes.js';
 import { collectionRouter } from './modules/collection/collection.routes.js';
+import { leaderboardRouter } from './modules/leaderboard/leaderboard.routes.js';
 import { matchingRouter } from './modules/matching/matching.routes.js';
 import { usersRouter } from './modules/users/users.routes.js';
 import { wakppuballsRouter } from './modules/wakppuballs/wakppuballs.routes.js';
@@ -29,6 +30,7 @@ export function createApp() {
   app.use('/api/wakppuballs', wakppuballsRouter);
   app.use('/api/collection', collectionRouter);
   app.use('/api/matching', matchingRouter);
+  app.use('/api/leaderboard', leaderboardRouter);
 
   app.use('/api', (_req, res) => {
     res.status(404).json({

@@ -11,9 +11,11 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { ApiError } from '../../shared/api/http';
 import { useAuth } from '../../shared/auth/AuthContext';
+import { CampusMatchBadge, TierBadge } from '../../shared/badges/Badges';
 import { validateUsername } from '../../shared/validation/credentials';
 import { fetchMe, renameUsername, type MeResponse } from '../auth/authApi';
 import { getCollection, selectMainWakppuball, type CollectionItem } from '../collection/collectionApi';
+import { getLeaderboard, type LeaderboardResponse, type TierName } from '../leaderboard/leaderboardApi';
 import {
   cancelMatchQueue,
   enterMatchQueue,
@@ -37,6 +39,12 @@ import { WakppuballView } from './WakppuballView';
 // don't pick up a 3D render).
 import { WakppuballViewer, type WakppuballViewerHandle } from './WakppuballViewer';
 import { useBgmToggle } from '../../shared/sound/useBgmToggle';
+import { useColorTheme } from '../../shared/theme/useColorTheme';
+import {
+  THEME_IDS,
+  type ThemeHue,
+  type ThemeTone
+} from '../../shared/theme/themeManager';
 import type {
   WakppuballCustomization,
   WakppuballFracture,
@@ -62,8 +70,44 @@ type MatchView =
   | { kind: 'matched'; result: MatchedResult; collectionCount: number }
   | { kind: 'error'; message: string };
 
-type ModalKind = 'profile' | 'collection' | null;
+type ModalKind = 'profile' | 'collection' | 'leaderboard' | 'theme' | null;
 type MeUser = MeResponse['user'];
+type LeaderboardMetric = 'breakCount' | 'distinctMatchedUsers';
+
+const MODAL_TITLES: Record<Exclude<ModalKind, null>, string> = {
+  profile: '내 정보',
+  collection: '내 컬렉션',
+  leaderboard: '리더보드',
+  theme: '테마 선택'
+};
+
+// Percentile meaning of each tier, best→worst — kept in sync with the cutoffs
+// in backend/src/modules/stats/tiers.ts (computeTier). Shown as a legend in
+// the leaderboard popup so users know what each badge shape represents.
+const TIER_PERCENTILE_LEGEND: { tier: TierName; label: string }[] = [
+  { tier: 'MASTER', label: '상위 5%' },
+  { tier: 'RUBY', label: '상위 5~10%' },
+  { tier: 'DIAMOND', label: '상위 10~20%' },
+  { tier: 'EMERALD', label: '상위 20~40%' },
+  { tier: 'GOLD', label: '상위 40~60%' },
+  { tier: 'SILVER', label: '상위 60~80%' },
+  { tier: 'BRONZE', label: '하위 20%' }
+];
+
+const THEME_HUE_LABELS: Record<ThemeHue, string> = {
+  red: '빨강',
+  orange: '주황',
+  yellow: '노랑',
+  green: '초록',
+  blue: '파랑',
+  navy: '남색',
+  purple: '보라'
+};
+
+const THEME_TONE_LABELS: Record<ThemeTone, string> = {
+  normal: '기본',
+  pastel: '파스텔'
+};
 type MatchLocation = Pick<MatchQueueBody, 'latitude' | 'longitude'>;
 // Viewport point (usually a trigger button's center) the popup animates in from.
 type PopOrigin = { x: number; y: number };
@@ -125,10 +169,6 @@ function getCurrentLocation(): Promise<MatchLocation> {
 function messageForMatchError(error: unknown): string {
   if (error instanceof ApiError) {
     switch (error.code) {
-      case 'LOCATION_REQUIRED':
-        return '매칭하려면 위치 정보 사용을 허용해야 합니다.';
-      case 'OUTSIDE_CAMPUS_AREA':
-        return '캠퍼스 안에서만 매칭할 수 있어요.';
       case 'MAIN_WAKPPUBALL_REQUIRED':
         return '매칭하려면 왁뿌볼을 먼저 만들어야 합니다.';
       case 'ALREADY_IN_QUEUE':
@@ -150,6 +190,27 @@ function IconUser() {
     <svg viewBox="0 0 24 24" aria-hidden="true">
       <path d="M12 12.25a4.25 4.25 0 1 0 0-8.5 4.25 4.25 0 0 0 0 8.5Z" />
       <path d="M4.75 20.25c.82-3.25 3.35-5.1 7.25-5.1s6.43 1.85 7.25 5.1" />
+    </svg>
+  );
+}
+
+function IconPalette() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M12 4.75c-4.14 0-7.25 3.25-7.25 7.25 0 3.35 2.3 5.5 4.5 5.5.9 0 1.35-.5 1.35-1.15 0-.55-.35-.9-.35-1.5 0-.7.55-1.15 1.3-1.15h1.5c2.6 0 4.7-1.85 4.7-4.6 0-2.9-2.6-4.35-5.75-4.35Z" />
+      <circle cx="8.75" cy="10.5" r="0.9" />
+      <circle cx="12" cy="8.25" r="0.9" />
+      <circle cx="15.25" cy="10.5" r="0.9" />
+    </svg>
+  );
+}
+
+function IconLeaderboard() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M7.75 19.25v-6.5" />
+      <path d="M12 19.25V4.75" />
+      <path d="M16.25 19.25v-9.5" />
     </svg>
   );
 }
@@ -281,6 +342,8 @@ export function MyWakppuballPage() {
   const [activeModal, setActiveModal] = useState<ModalKind>(null);
   const [profileView, setProfileView] = useState<AsyncState<MeUser>>({ kind: 'idle' });
   const [collectionView, setCollectionView] = useState<AsyncState<CollectionItem[]>>({ kind: 'idle' });
+  const [leaderboardView, setLeaderboardView] = useState<AsyncState<LeaderboardResponse>>({ kind: 'idle' });
+  const [leaderboardMetric, setLeaderboardMetric] = useState<LeaderboardMetric>('breakCount');
   const [selectingMain, setSelectingMain] = useState(false);
   const [selectMainError, setSelectMainError] = useState<string | null>(null);
   const [editingBallName, setEditingBallName] = useState(false);
@@ -299,6 +362,7 @@ export function MyWakppuballPage() {
   const matchSheetRef = useRef<HTMLDivElement | null>(null);
   const viewerRef = useRef<WakppuballViewerHandle>(null);
   const bgm = useBgmToggle();
+  const colorTheme = useColorTheme();
 
   usePopOrigin(activeModal !== null, popOrigin, modalSheetRef);
   usePopOrigin(matchOpen, matchOrigin, matchSheetRef);
@@ -430,6 +494,24 @@ export function MyWakppuballPage() {
     await loadCollection();
   }
 
+  function openTheme(event: MouseEvent<HTMLButtonElement>) {
+    setPopOrigin(getButtonCenter(event));
+    setActiveModal('theme');
+  }
+
+  async function openLeaderboard(event: MouseEvent<HTMLButtonElement>) {
+    setPopOrigin(getButtonCenter(event));
+    setActiveModal('leaderboard');
+    setLeaderboardView({ kind: 'loading' });
+    try {
+      const result = await getLeaderboard();
+      setLeaderboardView({ kind: 'success', data: result });
+    } catch (error) {
+      const message = error instanceof ApiError ? error.message : '리더보드를 불러오지 못했습니다.';
+      setLeaderboardView({ kind: 'error', message });
+    }
+  }
+
   async function handleSelectMain(item: CollectionItem) {
     if (item.isMain || selectingMain) {
       return;
@@ -556,10 +638,19 @@ export function MyWakppuballPage() {
     setMatchOpen(true);
     setMatchView({ kind: 'loading', message: '위치 확인 중…' });
 
+    // Location is purely cosmetic now (it only decides the campus-match
+    // badge) and never blocks matching, so a denied/unavailable geolocation
+    // just proceeds without it instead of aborting the match attempt.
+    let location: MatchLocation | undefined;
     try {
-      const location = await getCurrentLocation();
+      location = await getCurrentLocation();
+    } catch {
+      location = undefined;
+    }
+
+    try {
       setMatchView({ kind: 'loading', message: '매칭 상대를 찾는 중…' });
-      const result = await enterMatchQueue(location);
+      const result = await enterMatchQueue(location ?? {});
       await applyMatchResult(result);
     } catch (error) {
       if (error instanceof ApiError && error.code === 'ALREADY_IN_QUEUE') {
@@ -601,10 +692,18 @@ export function MyWakppuballPage() {
   return (
     <section className="home-screen">
       <header className="home-topbar">
-        <IconButton label="내 정보" onClick={openProfile}>
-          <IconUser />
-        </IconButton>
         <div className="home-topbar-group">
+          <IconButton label="내 정보" onClick={openProfile}>
+            <IconUser />
+          </IconButton>
+          <IconButton label="리더보드" onClick={openLeaderboard}>
+            <IconLeaderboard />
+          </IconButton>
+        </div>
+        <div className="home-topbar-group">
+          <IconButton label="배경 테마 선택" onClick={openTheme}>
+            <IconPalette />
+          </IconButton>
           <IconButton label={bgm.isOn ? '배경음악 끄기' : '배경음악 켜기'} onClick={bgm.toggle}>
             {bgm.isOn ? <IconSpeakerOn /> : <IconSpeakerOff />}
           </IconButton>
@@ -733,6 +832,7 @@ export function MyWakppuballPage() {
               ) : (
                 <p>
                   {view.wakppuball.name}
+                  <CampusMatchBadge show={view.wakppuball.isCampusMatch} />
                   {view.wakppuball.acquiredType === 'CREATED' && (
                     <button type="button" className="icon-button-inline" aria-label="왁뿌볼 이름 수정" onClick={startEditingBallName}>
                       <IconEdit />
@@ -760,16 +860,14 @@ export function MyWakppuballPage() {
       {activeModal && (
         <div className="modal-backdrop" role="presentation" onMouseDown={() => setActiveModal(null)}>
           <section
-            className={
-              activeModal === 'profile' ? 'modal-sheet modal-sheet--profile' : 'modal-sheet modal-sheet--collection'
-            }
+            className={`modal-sheet modal-sheet--${activeModal}`}
             ref={modalSheetRef}
             role="dialog"
             aria-modal="true"
             onMouseDown={(event) => event.stopPropagation()}
           >
             <div className="sheet-header">
-              <h2>{activeModal === 'profile' ? '내 정보' : '내 컬렉션'}</h2>
+              <h2>{MODAL_TITLES[activeModal]}</h2>
               <IconButton label="닫기" onClick={() => setActiveModal(null)}>
                 <IconClose />
               </IconButton>
@@ -813,11 +911,17 @@ export function MyWakppuballPage() {
                     <div className="stat-grid">
                       <div>
                         <span>현재 보유</span>
-                        <strong>{profileView.data.collectionCount}</strong>
+                        <strong>
+                          {profileView.data.distinctMatchedUserCount}
+                          <TierBadge tier={profileView.data.tiers.distinctMatchedUsers} />
+                        </strong>
                       </div>
                       <div>
-                        <span>누적 획득</span>
-                        <strong>{profileView.data.totalAcquiredCount}</strong>
+                        <span>누적 뿌신 횟수</span>
+                        <strong>
+                          {profileView.data.totalBreakCount}
+                          <TierBadge tier={profileView.data.tiers.breakCount} />
+                        </strong>
                       </div>
                     </div>
                     <button className="danger-button" type="button" onClick={handleLogout}>
@@ -848,13 +952,88 @@ export function MyWakppuballPage() {
                         disabled={selectingMain}
                       >
                         <WakppuballView name={item.name} customization={item.customization} />
-                        <strong>{item.name}</strong>
+                        <strong>
+                          <span className="collection-tile-name">{item.name}</span>
+                          <CampusMatchBadge show={item.isCampusMatch} />
+                        </strong>
                         <span>{item.isMain ? '대표 왁뿌볼' : item.acquiredType === 'MATCHED' ? '매칭 획득' : '직접 생성'}</span>
                         <span>남은 뿌시기 {item.remainingBreakCount}</span>
                       </button>
                     ))}
                   </div>
                 )}
+              </div>
+            )}
+
+            {activeModal === 'leaderboard' && (
+              <div className="sheet-content">
+                {leaderboardView.kind === 'loading' && <p>불러오는 중…</p>}
+                {leaderboardView.kind === 'error' && <p role="alert">{leaderboardView.message}</p>}
+                {leaderboardView.kind === 'success' && (
+                  <>
+                    <div className="segmented-control" aria-label="리더보드 기준 선택">
+                      <SegmentButton
+                        value="breakCount"
+                        selected={leaderboardMetric === 'breakCount'}
+                        onSelect={setLeaderboardMetric}
+                      >
+                        뿌시기 횟수
+                      </SegmentButton>
+                      <SegmentButton
+                        value="distinctMatchedUsers"
+                        selected={leaderboardMetric === 'distinctMatchedUsers'}
+                        onSelect={setLeaderboardMetric}
+                      >
+                        매칭 유저 수
+                      </SegmentButton>
+                    </div>
+                    {leaderboardView.data[leaderboardMetric].length === 0 && <p>아직 순위가 없어요.</p>}
+                    <div className="leaderboard-list">
+                      {leaderboardView.data[leaderboardMetric].map((entry) => (
+                        <div className="leaderboard-row" key={entry.userId}>
+                          <span>{entry.rank}</span>
+                          <TierBadge tier={entry.tier} />
+                          <strong>{entry.username}</strong>
+                          <span>{entry.value}</span>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="tier-legend">
+                      <span className="tier-legend-title">티어 안내</span>
+                      {TIER_PERCENTILE_LEGEND.map(({ tier, label }) => (
+                        <div className="tier-legend-row" key={tier}>
+                          <TierBadge tier={tier} />
+                          <span>{label}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+
+            {activeModal === 'theme' && (
+              <div className="sheet-content">
+                <div className="theme-grid" role="radiogroup" aria-label="배경 테마 선택">
+                  {THEME_IDS.map((id) => {
+                    const [hue, tone] = id.split('-') as [ThemeHue, ThemeTone];
+                    return (
+                      <button
+                        key={id}
+                        type="button"
+                        className={
+                          id === colorTheme.theme ? 'theme-swatch-button selected' : 'theme-swatch-button'
+                        }
+                        data-hue={hue}
+                        data-tone={tone}
+                        aria-pressed={id === colorTheme.theme}
+                        onClick={() => colorTheme.setTheme(id)}
+                      >
+                        {THEME_HUE_LABELS[hue]} · {THEME_TONE_LABELS[tone]}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
             )}
           </section>
@@ -890,7 +1069,10 @@ export function MyWakppuballPage() {
                   name={matchView.result.partnerWakppuball.name}
                   customization={matchView.result.partnerWakppuball.customization}
                 />
-                <strong>{matchView.result.partnerWakppuball.name}</strong>
+                <strong>
+                  {matchView.result.partnerWakppuball.name}
+                  <CampusMatchBadge show={matchView.result.partnerWakppuball.isCampusMatch} />
+                </strong>
                 <span>컬렉션 {matchView.collectionCount}개</span>
               </div>
               <button className="primary-button" type="button" onClick={() => setMatchOpen(false)}>

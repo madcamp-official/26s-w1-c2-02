@@ -100,11 +100,13 @@ authRouter.post('/logout', (_req, res) => {
 
 // Exported so other modules (e.g. the username-rename route) validate against
 // the exact same rule instead of duplicating/drifting from it.
+// Allows complete Hangul syllables (가-힣) alongside ASCII alnum/underscore —
+// no lone jamo (ㄱ-ㅎ, ㅏ-ㅣ), since those aren't valid standalone characters.
 export const usernameSchema = z
   .string()
   .min(2)
   .max(20)
-  .regex(/^[a-zA-Z0-9_]+$/);
+  .regex(/^[a-zA-Z0-9_가-힣]+$/);
 
 const signupSchema = z.object({
   username: usernameSchema,

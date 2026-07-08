@@ -18,6 +18,9 @@ export type CollectionItem = {
   acquiredType: WakppuballAcquiredType;
   // Present only when the ball records who it came from.
   acquiredFrom?: { id: string; username: string };
+  // True when the match that most recently produced this ball had both
+  // sides verified inside the campus geofence — drives the campus badge.
+  isCampusMatch: boolean;
   remainingBreakCount: number;
   status: WakppuballStatus;
   isMain: boolean;

@@ -1,10 +1,75 @@
 :root {
-  /* Lava-lamp background blobs (screen-blended over the purple base) */
-  --lava-pink: rgba(250, 93, 166, 0.72);
-  --lava-violet: rgba(151, 84, 255, 0.78);
-  --lava-magenta: rgba(214, 64, 208, 0.62);
-  --lava-cyan: rgba(72, 219, 255, 0.42);
-  --lava-indigo: rgba(110, 60, 255, 0.72);
+  /* Original (purple) values for every themeable color, kept fixed so every
+     theme derives from the same source via relative-color hue rotation below
+     instead of 14 sets of hand-picked colors. */
+  --lava-pink-base: rgba(250, 93, 166, 0.72);
+  --lava-violet-base: rgba(151, 84, 255, 0.78);
+  --lava-magenta-base: rgba(214, 64, 208, 0.62);
+  --lava-cyan-base: rgba(72, 219, 255, 0.42);
+  --lava-indigo-base: rgba(110, 60, 255, 0.72);
+  --bg-color-base: #16001f;
+  --bg-stop1-base: rgba(30, 0, 50, 1);
+  --bg-stop2-base: rgba(90, 26, 144, 0.98);
+  --bg-stop3-base: rgba(31, 0, 61, 1);
+  --bg-overlay-pink-base: rgba(250, 93, 166, 0.34);
+  --bg-overlay-cyan-base: rgba(72, 219, 255, 0.2);
+
+  /* Per-theme knobs, overridden per html[data-theme="..."] further down.
+     Defaults here are the purple-normal theme (hue-shift 0, full saturation,
+     unchanged lightness). Hue-shift is a bare number (not deg) because
+     relative-color syntax's `h` channel is itself a bare number. */
+  --theme-hue-shift: 0;
+  --theme-sat-mult: 1;
+  --theme-light-mult: 1;
+
+  /* Every themeable color, hue-rotated + saturation/lightness-adjusted from
+     its *-base value by the active theme's knobs above. Everything that
+     paints the background gradient or lava blobs should read from these,
+     never from the *-base values directly. */
+  --lava-pink: hsl(
+    from var(--lava-pink-base) calc(h + var(--theme-hue-shift)) calc(s * var(--theme-sat-mult))
+      calc(l * var(--theme-light-mult)) / alpha
+  );
+  --lava-violet: hsl(
+    from var(--lava-violet-base) calc(h + var(--theme-hue-shift)) calc(s * var(--theme-sat-mult))
+      calc(l * var(--theme-light-mult)) / alpha
+  );
+  --lava-magenta: hsl(
+    from var(--lava-magenta-base) calc(h + var(--theme-hue-shift)) calc(s * var(--theme-sat-mult))
+      calc(l * var(--theme-light-mult)) / alpha
+  );
+  --lava-cyan: hsl(
+    from var(--lava-cyan-base) calc(h + var(--theme-hue-shift)) calc(s * var(--theme-sat-mult))
+      calc(l * var(--theme-light-mult)) / alpha
+  );
+  --lava-indigo: hsl(
+    from var(--lava-indigo-base) calc(h + var(--theme-hue-shift)) calc(s * var(--theme-sat-mult))
+      calc(l * var(--theme-light-mult)) / alpha
+  );
+  --bg-color: hsl(
+    from var(--bg-color-base) calc(h + var(--theme-hue-shift)) calc(s * var(--theme-sat-mult))
+      calc(l * var(--theme-light-mult))
+  );
+  --bg-stop1: hsl(
+    from var(--bg-stop1-base) calc(h + var(--theme-hue-shift)) calc(s * var(--theme-sat-mult))
+      calc(l * var(--theme-light-mult)) / alpha
+  );
+  --bg-stop2: hsl(
+    from var(--bg-stop2-base) calc(h + var(--theme-hue-shift)) calc(s * var(--theme-sat-mult))
+      calc(l * var(--theme-light-mult)) / alpha
+  );
+  --bg-stop3: hsl(
+    from var(--bg-stop3-base) calc(h + var(--theme-hue-shift)) calc(s * var(--theme-sat-mult))
+      calc(l * var(--theme-light-mult)) / alpha
+  );
+  --bg-overlay-pink: hsl(
+    from var(--bg-overlay-pink-base) calc(h + var(--theme-hue-shift)) calc(s * var(--theme-sat-mult))
+      calc(l * var(--theme-light-mult)) / alpha
+  );
+  --bg-overlay-cyan: hsl(
+    from var(--bg-overlay-cyan-base) calc(h + var(--theme-hue-shift)) calc(s * var(--theme-sat-mult))
+      calc(l * var(--theme-light-mult)) / alpha
+  );
 
   /* Corner scale. Apple's continuous "squircle" corner has no exact CSS
      equivalent, so this approximates it with generous radii plus a
@@ -46,6 +111,96 @@
   text-rendering: geometricPrecision;
 }
 
+/* 7 hue families x 2 tone variants = 14 themes. Each hue-shift rotates every
+   *-base color (defined in :root) by the same fixed offset from purple's
+   anchor hue (~273deg) to a rainbow-order target hue, so relative
+   relationships between the base gradient/lava colors are preserved instead
+   of hand-picked per theme. Pastel rows apply the same saturation-down /
+   lightness-up pass on top of whichever hue-shift is active. */
+html[data-theme="purple-normal"] {
+  --theme-hue-shift: 0;
+  --theme-sat-mult: 1;
+  --theme-light-mult: 1;
+}
+
+html[data-theme="purple-pastel"] {
+  --theme-hue-shift: 0;
+  --theme-sat-mult: 0.55;
+  --theme-light-mult: 1.25;
+}
+
+html[data-theme="red-normal"] {
+  --theme-hue-shift: -273;
+  --theme-sat-mult: 1;
+  --theme-light-mult: 1;
+}
+
+html[data-theme="red-pastel"] {
+  --theme-hue-shift: -273;
+  --theme-sat-mult: 0.55;
+  --theme-light-mult: 1.25;
+}
+
+html[data-theme="orange-normal"] {
+  --theme-hue-shift: -243;
+  --theme-sat-mult: 1;
+  --theme-light-mult: 1;
+}
+
+html[data-theme="orange-pastel"] {
+  --theme-hue-shift: -243;
+  --theme-sat-mult: 0.55;
+  --theme-light-mult: 1.25;
+}
+
+html[data-theme="yellow-normal"] {
+  --theme-hue-shift: -218;
+  --theme-sat-mult: 1;
+  --theme-light-mult: 1;
+}
+
+html[data-theme="yellow-pastel"] {
+  --theme-hue-shift: -218;
+  --theme-sat-mult: 0.55;
+  --theme-light-mult: 1.25;
+}
+
+html[data-theme="green-normal"] {
+  --theme-hue-shift: -143;
+  --theme-sat-mult: 1;
+  --theme-light-mult: 1;
+}
+
+html[data-theme="green-pastel"] {
+  --theme-hue-shift: -143;
+  --theme-sat-mult: 0.55;
+  --theme-light-mult: 1.25;
+}
+
+html[data-theme="blue-normal"] {
+  --theme-hue-shift: -68;
+  --theme-sat-mult: 1;
+  --theme-light-mult: 1;
+}
+
+html[data-theme="blue-pastel"] {
+  --theme-hue-shift: -68;
+  --theme-sat-mult: 0.55;
+  --theme-light-mult: 1.25;
+}
+
+html[data-theme="navy-normal"] {
+  --theme-hue-shift: -23;
+  --theme-sat-mult: 1;
+  --theme-light-mult: 1;
+}
+
+html[data-theme="navy-pastel"] {
+  --theme-hue-shift: -23;
+  --theme-sat-mult: 0.55;
+  --theme-light-mult: 1.25;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -54,11 +209,11 @@
    stay background-free, otherwise it paints over the z-index:-1 blob layers. */
 html {
   min-height: 100%;
-  background-color: #16001f;
+  background-color: var(--bg-color);
   background-image:
-    linear-gradient(125deg, rgba(30, 0, 50, 1), rgba(90, 26, 144, 0.98), rgba(31, 0, 61, 1)),
-    linear-gradient(65deg, rgba(250, 93, 166, 0.34), transparent 42%),
-    linear-gradient(210deg, rgba(72, 219, 255, 0.2), transparent 40%);
+    linear-gradient(125deg, var(--bg-stop1), var(--bg-stop2), var(--bg-stop3)),
+    linear-gradient(65deg, var(--bg-overlay-pink), transparent 42%),
+    linear-gradient(210deg, var(--bg-overlay-cyan), transparent 40%);
   background-size: 260% 260%, 220% 220%, 240% 240%;
   animation: dreamWave 18s ease-in-out infinite;
 }
@@ -591,6 +746,11 @@ a {
 .segmented-control {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
+  /* Without this, a grid item's implicit min-width is its content's
+     min-content size, which let long labels (e.g. the leaderboard's "매칭
+     유저 수" tab) force this wider than the narrow modal-sheet popups and
+     overflow past their clipped edge. */
+  min-width: 0;
   gap: 6px;
   padding: 4px;
   border: 1px solid var(--glass-border-soft);
@@ -600,6 +760,7 @@ a {
 
 .segment-button {
   min-height: 38px;
+  min-width: 0;
   border: 0;
   border-radius: var(--radius-sm);
   color: rgba(255, 255, 255, 0.7);
@@ -613,6 +774,78 @@ a {
   color: #23072d;
   background: #ffffff;
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.2);
+}
+
+.theme-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.theme-swatch-button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  border: 1px solid var(--glass-border-soft);
+  border-radius: var(--radius-md);
+  background: var(--glass-fill-soft);
+  color: #fff;
+  padding: 10px 12px;
+  font-size: 13px;
+  font-weight: 700;
+  text-align: left;
+  white-space: nowrap;
+  transition: border-color 150ms ease, background 150ms ease;
+}
+
+.theme-swatch-button.selected {
+  border-color: rgba(255, 255, 255, 0.6);
+  background: var(--glass-fill-strong);
+}
+
+/* Chip preview colors are independent, hard-coded rainbow hues (not derived
+   from the live theme vars above) so all 14 options stay visible at once,
+   regardless of whichever theme is currently active. */
+.theme-swatch-button::before {
+  content: "";
+  flex: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+}
+
+.theme-swatch-button[data-hue="red"]::before {
+  background: hsl(0 70% 55%);
+}
+
+.theme-swatch-button[data-hue="orange"]::before {
+  background: hsl(30 70% 55%);
+}
+
+.theme-swatch-button[data-hue="yellow"]::before {
+  background: hsl(55 70% 55%);
+}
+
+.theme-swatch-button[data-hue="green"]::before {
+  background: hsl(130 55% 45%);
+}
+
+.theme-swatch-button[data-hue="blue"]::before {
+  background: hsl(205 70% 55%);
+}
+
+.theme-swatch-button[data-hue="navy"]::before {
+  background: hsl(250 65% 55%);
+}
+
+.theme-swatch-button[data-hue="purple"]::before {
+  background: hsl(273 65% 55%);
+}
+
+.theme-swatch-button[data-tone="pastel"]::before {
+  filter: saturate(0.55) brightness(1.25);
 }
 
 .primary-button,
@@ -695,8 +928,8 @@ a {
 .modal-sheet {
   position: fixed;
   top: calc(max(18px, env(safe-area-inset-top)) + 58px);
-  width: clamp(200px, 46vw, 260px);
-  height: clamp(280px, 46dvh, 380px);
+  width: clamp(272px, 82vw, 344px);
+  max-height: clamp(320px, 72dvh, 560px);
   padding: 16px;
   border-radius: var(--radius-xl);
   display: flex;
@@ -706,11 +939,15 @@ a {
   animation: sheetPop 380ms cubic-bezier(0.19, 1, 0.22, 1) both;
 }
 
-.modal-sheet--profile {
+/* Anchored to whichever topbar cluster opens them: profile/leaderboard live
+   in the left cluster, theme/collection in the right one. */
+.modal-sheet--profile,
+.modal-sheet--leaderboard {
   left: max(18px, calc((100vw - 520px) / 2 + 18px));
 }
 
-.modal-sheet--collection {
+.modal-sheet--collection,
+.modal-sheet--theme {
   right: max(18px, calc((100vw - 520px) / 2 + 18px));
 }
 
@@ -730,6 +967,11 @@ a {
 
 .sheet-content {
   display: grid;
+  /* Explicit minmax(0, 1fr) instead of the implicit single "auto" column —
+     without it, a wide child (e.g. the leaderboard's segmented-control with
+     long labels) inflates this track past the popup's width instead of
+     shrinking to fit it. */
+  grid-template-columns: minmax(0, 1fr);
   flex: 1;
   min-height: 0;
   align-content: start;
@@ -832,10 +1074,20 @@ a {
   justify-self: center;
 }
 
+/* flex row so the campus-match badge sits fully outside the name's own
+   ellipsis truncation, instead of both being clipped together as one run. */
 .collection-tile strong {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.collection-tile-name {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  min-width: 0;
 }
 
 .match-sheet {
@@ -888,6 +1140,97 @@ a {
 
 .matched-ball span {
   align-self: start;
+}
+
+.campus-match-badge {
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  margin-left: 4px;
+  vertical-align: middle;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 1px solid var(--glass-border-soft);
+}
+
+.tier-badge {
+  display: inline-block;
+  width: 20px;
+  height: 20px;
+  margin-left: 6px;
+  vertical-align: middle;
+  object-fit: contain;
+}
+
+.leaderboard-list {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+}
+
+.leaderboard-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--glass-border-soft);
+  border-radius: var(--radius-lg);
+  background: var(--glass-fill-soft);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22);
+  padding: 8px 12px;
+}
+
+.leaderboard-row > span:first-child {
+  min-width: 18px;
+  color: rgba(255, 255, 255, 0.64);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.leaderboard-row strong {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.leaderboard-row > span:last-child {
+  color: rgba(255, 255, 255, 0.64);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+/* Legend below the ranked list: what top-percentile each tier badge means. */
+.tier-legend {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px 10px;
+  margin-top: 4px;
+  padding: 12px;
+  border: 1px solid var(--glass-border-soft);
+  border-radius: var(--radius-lg);
+  background: var(--glass-fill-soft);
+}
+
+.tier-legend-title {
+  grid-column: 1 / -1;
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.tier-legend-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.tier-legend-row span {
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
 }
 
 .panel h1,

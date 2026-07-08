@@ -52,6 +52,7 @@ collectionRouter.get(
               username: owned.acquiredFromUser.username
             }
           : undefined,
+        isCampusMatch: owned.isCampusMatch,
         remainingBreakCount: owned.remainingBreakCount,
         status: owned.status,
         isMain: owned.isMain,
