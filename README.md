@@ -35,8 +35,24 @@
 - **랭킹 조회하기** — 누적 뿌시기 횟수 / 누적 매칭 유저 수 기준 리더보드와 백분위 티어(마스터~브론즈) 확인
 
 ### 스크린샷 / 데모
-
-<!-- 움짤 4개 이상 혹은 20초 이상의 데모 영상(또는 사진 4장 이상) 추가 예정 -->
+<table>
+  <tr>
+    <th>Create</th>
+    <th>Crush</th>
+  </tr>
+  <tr>
+    <td><img src="https://github.com/user-attachments/assets/fc182122-5feb-4b72-a49e-a8360f1db2b8" width="320"></td>
+    <td><img src="https://github.com/user-attachments/assets/4bc6c5e8-243f-4071-8c2e-87ca468558d1" width="320"></td>
+  </tr>
+  <tr>
+    <th>Connect</th>
+    <th>Collect</th>
+  </tr>
+  <tr>
+    <td><img src="https://github.com/user-attachments/assets/a4cc68a0-1792-4180-8421-e2d83165cec6" width="320"></td>
+    <td><img src="https://github.com/user-attachments/assets/54d2a215-ecc4-4972-b4ba-88e97ccbb816" width="320"></td>
+  </tr>
+</table>
 
 ---
 
