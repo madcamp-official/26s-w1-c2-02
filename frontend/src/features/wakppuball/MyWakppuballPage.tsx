@@ -207,18 +207,24 @@ function getCurrentLocation(): Promise<MatchLocation> {
 // photo (often 4000px+) over the wire for no benefit.
 async function downscaleImageFile(file: File, maxDimension: number): Promise<File> {
   const bitmap = await createImageBitmap(file);
-  const scale = Math.min(1, maxDimension / Math.max(bitmap.width, bitmap.height));
-  const width = Math.round(bitmap.width * scale);
-  const height = Math.round(bitmap.height * scale);
-  const canvas = document.createElement('canvas');
-  canvas.width = width;
-  canvas.height = height;
-  const ctx = canvas.getContext('2d');
-  if (!ctx) return file;
-  ctx.drawImage(bitmap, 0, 0, width, height);
-  const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.85));
-  if (!blob) return file;
-  return new File([blob], 'skin.jpg', { type: 'image/jpeg' });
+  try {
+    const scale = Math.min(1, maxDimension / Math.max(bitmap.width, bitmap.height));
+    const width = Math.round(bitmap.width * scale);
+    const height = Math.round(bitmap.height * scale);
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return file;
+    ctx.drawImage(bitmap, 0, 0, width, height);
+    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.85));
+    if (!blob) return file;
+    return new File([blob], 'skin.jpg', { type: 'image/jpeg' });
+  } finally {
+    // ImageBitmap holds a full decoded pixel buffer that isn't reliably freed
+    // by GC — release it on every path (incl. the early returns above).
+    bitmap.close();
+  }
 }
 
 function messageForMatchError(error: unknown): string {
