@@ -42,7 +42,7 @@ Confirm the proxy is working: the browser Network tab should show `/api/...` req
 
 ## 4. End-to-end checklist (real backend)
 
-1. **Signup**: new username (2–20 chars, `[a-zA-Z0-9_]`) + password (≥8). Should land on the main screen. Re-using a username → "이미 사용 중인 유저네임입니다."
+1. **Signup**: new username (2–20 chars, `[a-zA-Z0-9_가-힣]`, complete Hangul syllables allowed) + password (≥8). Should land on the main screen. Re-using a username → "이미 사용 중인 유저네임입니다."
 2. **Main screen**: a fresh account has no main ball → empty state. NOTE the main ball is fetched via **`GET /users/me` + `GET /collection`** (composition), because `GET /wakppuballs/me/main` is still 501 on the backend. Verify in the Network tab that those two are called and `/wakppuballs/me/main` is **not**.
 3. **Save**: create a wakppuball → main screen shows it; `/collection` includes it as `(대표)`.
 4. **Collection**: reflects created + matched balls; CONSUMED excluded.

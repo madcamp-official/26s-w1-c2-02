@@ -7,6 +7,7 @@ import { requireAuth } from '../../common/auth.middleware.js';
 import { validateBody } from '../../common/validate.js';
 import { prisma } from '../../db/prisma.js';
 import { usernameSchema } from '../auth/auth.routes.js';
+import { computeTier } from '../stats/tiers.js';
 
 export const usersRouter = Router();
 
@@ -24,22 +25,30 @@ usersRouter.get(
 
     const userId = BigInt(req.user.id);
 
-    const user = await prisma.user.findUnique({
-      where: {
-        id: userId
-      },
-      include: {
-        ownedWakppuballs: {
-          where: {
-            status: 'ACTIVE'
-          },
-          select: {
-            id: true,
-            isMain: true
+    const [user, allUsers] = await Promise.all([
+      prisma.user.findUnique({
+        where: {
+          id: userId
+        },
+        include: {
+          ownedWakppuballs: {
+            where: {
+              status: 'ACTIVE'
+            },
+            select: {
+              id: true,
+              isMain: true
+            }
           }
         }
-      }
-    });
+      }),
+      // Tiers are percentile-based, so they need the full population every
+      // time — never cached alongside the counters themselves. Same query
+      // shape as the leaderboard route.
+      prisma.user.findMany({
+        select: { totalBreakCount: true, distinctMatchedUserCount: true }
+      })
+    ]);
 
     if (!user) {
       throw new ApiError(404, 'NOT_FOUND', '유저를 찾을 수 없습니다.');
@@ -52,8 +61,24 @@ usersRouter.get(
         id: user.id.toString(),
         username: user.username,
         mainWakppuballId: mainWakppuball?.id.toString() ?? null,
-        collectionCount: user.ownedWakppuballs.length,
+        // Redefined from "count of active owned items" (which included the
+        // caller's own created ball) to "cumulative distinct matched
+        // partners" — a maintained counter, not derived from
+        // ownedWakppuballs (that sub-select stays only for mainWakppuballId
+        // above). GET /collection is unaffected and still lists the own ball.
+        distinctMatchedUserCount: user.distinctMatchedUserCount,
         totalAcquiredCount: user.totalAcquiredCount,
+        totalBreakCount: user.totalBreakCount,
+        tiers: {
+          breakCount: computeTier(
+            user.totalBreakCount,
+            allUsers.map((u) => u.totalBreakCount)
+          ),
+          distinctMatchedUsers: computeTier(
+            user.distinctMatchedUserCount,
+            allUsers.map((u) => u.distinctMatchedUserCount)
+          )
+        },
         createdAt: user.createdAt.toISOString()
       }
     });

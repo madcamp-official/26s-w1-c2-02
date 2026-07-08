@@ -1,4 +1,5 @@
 import { apiRequest } from '../../shared/api/http';
+import type { TierName } from '../leaderboard/leaderboardApi';
 
 // Response shapes follow docs/api.md exactly.
 
@@ -18,8 +19,16 @@ export type MeResponse = {
     id: string;
     username: string;
     mainWakppuballId: string | null;
-    collectionCount: number;
+    // Cumulative distinct matched partners (deduped) — was "collectionCount"
+    // (count of all active owned items, including the caller's own ball).
+    // GET /collection is unaffected; this is only the profile summary stat.
+    distinctMatchedUserCount: number;
     totalAcquiredCount: number;
+    totalBreakCount: number;
+    tiers: {
+      breakCount: TierName;
+      distinctMatchedUsers: TierName;
+    };
     createdAt: string;
   };
 };

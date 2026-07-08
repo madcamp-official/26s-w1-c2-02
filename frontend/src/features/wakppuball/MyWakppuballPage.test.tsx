@@ -47,6 +47,7 @@ const sampleMain: MainWakppuball = {
     shape: 'sphere'
   },
   fracture: { thicknessPreset: 'medium' },
+  isCampusMatch: false,
   remainingBreakCount: 3,
   status: 'ACTIVE',
   acquiredType: 'CREATED',

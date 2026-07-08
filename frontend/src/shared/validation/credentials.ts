@@ -2,7 +2,9 @@
 // The server only returns a generic VALIDATION_ERROR, so these rules exist so the
 // frontend can show per-field guidance before submitting the form.
 
-export const USERNAME_REGEX = /^[a-zA-Z0-9_]+$/;
+// Allows complete Hangul syllables (가-힣) alongside ASCII alnum/underscore —
+// no lone jamo (ㄱ-ㅎ, ㅏ-ㅣ), since those aren't valid standalone characters.
+export const USERNAME_REGEX = /^[a-zA-Z0-9_가-힣]+$/;
 export const USERNAME_MIN = 2;
 export const USERNAME_MAX = 20;
 export const PASSWORD_MIN = 8;
@@ -14,7 +16,7 @@ export function validateUsername(username: string): string | null {
     return `유저네임은 ${USERNAME_MIN}~${USERNAME_MAX}자여야 합니다.`;
   }
   if (!USERNAME_REGEX.test(username)) {
-    return '유저네임은 영문, 숫자, 밑줄(_)만 사용할 수 있습니다.';
+    return '유저네임은 한글, 영문, 숫자, 밑줄(_)만 사용할 수 있습니다.';
   }
   return null;
 }
