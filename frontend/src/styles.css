@@ -424,6 +424,7 @@ a {
 }
 
 .icon-button {
+  position: relative;
   display: inline-grid;
   width: 48px;
   height: 48px;
@@ -442,6 +443,19 @@ a {
 
 .icon-button:active {
   transform: scale(0.92);
+}
+
+/* Unread-notification dot (e.g. "새 왁뿌볼이 컬렉션에 추가됐어요"). */
+.icon-button-badge {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: #ff4d6d;
+  border: 2px solid rgba(27, 12, 48, 0.9);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.25);
 }
 
 .icon-button svg,
@@ -848,6 +862,59 @@ a {
   filter: saturate(0.55) brightness(1.25);
 }
 
+.bgm-power-button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--glass-border-soft);
+  border-radius: var(--radius-md);
+  background: var(--glass-fill-soft);
+  color: #fff;
+  padding: 10px 12px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.bgm-power-button svg {
+  width: 20px;
+  height: 20px;
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.bgm-power-button.on {
+  border-color: rgba(255, 255, 255, 0.6);
+  background: var(--glass-fill-strong);
+}
+
+.bgm-track-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.bgm-track-button {
+  min-width: 0;
+  border: 1px solid var(--glass-border-soft);
+  border-radius: var(--radius-md);
+  background: var(--glass-fill-soft);
+  color: #fff;
+  padding: 10px 12px;
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+  transition: border-color 150ms ease, background 150ms ease;
+}
+
+.bgm-track-button.selected {
+  border-color: rgba(255, 255, 255, 0.6);
+  background: var(--glass-fill-strong);
+}
+
 .primary-button,
 .secondary-button,
 .danger-button,
@@ -947,7 +1014,8 @@ a {
 }
 
 .modal-sheet--collection,
-.modal-sheet--theme {
+.modal-sheet--theme,
+.modal-sheet--bgm {
   right: max(18px, calc((100vw - 520px) / 2 + 18px));
 }
 

@@ -11,6 +11,9 @@ export type CollectionItem = {
   ownedId: string;
   modelId: string;
   name: string;
+  // The wakppuball's original designer's username (always populated in
+  // practice — the caller for CREATED balls, the match partner for MATCHED).
+  creatorUsername: string | null;
   modelUrl: string | null;
   thumbnailUrl: string | null;
   customization: WakppuballCustomization | null;
