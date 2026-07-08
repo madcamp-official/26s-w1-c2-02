@@ -41,8 +41,17 @@ collectionRouter.get(
       orderBy: [{ remainingBreakCount: 'desc' }, { acquiredAt: 'desc' }]
     });
 
+    // 내가 직접 만든 왁뿌볼(CREATED)은 항상 맨 앞 — 나머지는 위 orderBy가 이미
+    // 매긴 순서를 그대로 보존한다(Array#sort는 stable). 유저당 CREATED는
+    // 보통 하나뿐이지만, 여러 개여도 전부 앞으로 온다.
+    const sortedWakppuballs = [...ownedWakppuballs].sort((a, b) => {
+      if (a.acquiredType === 'CREATED' && b.acquiredType !== 'CREATED') return -1;
+      if (a.acquiredType !== 'CREATED' && b.acquiredType === 'CREATED') return 1;
+      return 0;
+    });
+
     res.json({
-      items: ownedWakppuballs.map((owned) => ({
+      items: sortedWakppuballs.map((owned) => ({
         ownedId: owned.id.toString(),
         modelId: owned.model.id.toString(),
         name: owned.model.name,

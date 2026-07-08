@@ -1012,7 +1012,13 @@ export function MyWakppuballPage() {
                     {collectionView.data.map((item) => (
                       <button
                         type="button"
-                        className={item.isMain ? 'collection-tile collection-tile--main' : 'collection-tile'}
+                        className={[
+                          'collection-tile',
+                          item.isMain && 'collection-tile--main',
+                          item.acquiredType === 'CREATED' && 'collection-tile--created'
+                        ]
+                          .filter(Boolean)
+                          .join(' ')}
                         key={item.ownedId}
                         onClick={() => handleSelectMain(item)}
                         disabled={selectingMain}
