@@ -21,6 +21,18 @@ export function createApp() {
   app.use(cors());
   app.use(express.json({ limit: '1mb' }));
 
+  // Every /api/* response is per-user data gated by the Authorization
+  // header, which most HTTP caches (browsers, and especially CDNs like
+  // CloudFront in front of this app — see infra/aws-notes.md) do NOT vary
+  // on by default. Without an explicit no-store, a cache can key purely by
+  // URL and replay one user's cached response (e.g. GET /users/me) to the
+  // next visitor who hits the same URL — this is what "I opened the link
+  // and was logged in as someone else" actually was.
+  app.use('/api', (_req, res, next) => {
+    res.setHeader('Cache-Control', 'no-store');
+    next();
+  });
+
   app.get('/api/health', (_req, res) => {
     res.json({ status: 'ok' });
   });
