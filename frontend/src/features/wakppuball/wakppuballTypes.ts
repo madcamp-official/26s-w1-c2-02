@@ -1,6 +1,6 @@
 export type WakppuballPattern = {
   type: 'preset';
-  id: 'dots' | 'stripes';
+  id: 'none' | 'dots' | 'stripes';
 };
 
 export type WakppuballShape = 'sphere';
