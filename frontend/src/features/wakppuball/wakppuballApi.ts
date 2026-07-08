@@ -17,6 +17,7 @@ export type MainWakppuball = {
   name: string;
   modelUrl: string | null;
   thumbnailUrl: string | null;
+  isCampusMatch: boolean;
   remainingBreakCount: number;
   status: WakppuballStatus;
   acquiredType: WakppuballAcquiredType;
@@ -65,6 +66,7 @@ export async function getMainWakppuballViaComposition(): Promise<{ wakppuball: M
       name: found.name,
       modelUrl: found.modelUrl,
       thumbnailUrl: found.thumbnailUrl,
+      isCampusMatch: found.isCampusMatch,
       remainingBreakCount: found.remainingBreakCount,
       status: found.status,
       acquiredType: found.acquiredType,

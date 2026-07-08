@@ -7,8 +7,8 @@ import type {
 } from '../wakppuball/wakppuballTypes';
 
 export type MatchQueueBody = {
-  latitude: number;
-  longitude: number;
+  latitude?: number;
+  longitude?: number;
 };
 
 export type WaitingResult = {
@@ -30,6 +30,7 @@ export type MatchedResult = {
     customization: WakppuballCustomization | null;
     fracture: WakppuballFracture | null;
     acquiredType: WakppuballAcquiredType;
+    isCampusMatch: boolean;
     remainingBreakCount: number;
     status: WakppuballStatus;
     acquiredAt: string;

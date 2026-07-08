@@ -167,13 +167,17 @@ async function findValidWaitingEntry(
 // person again refills that existing slot back to a full break count
 // instead of creating a duplicate; matching someone new creates it.
 // isMain is left untouched on refill so an existing main-ball choice isn't
-// silently overridden by a later match.
+// silently overridden by a later match. isCampusMatch always gets
+// (re)written — it reflects this match's circumstances, not sticky from an
+// earlier one. `isNewPartner` tells the caller whether this was a genuinely
+// new distinct partner (for the distinct-matched-user counter).
 async function createOrRefillMatchedOwnedWakppuball(
   tx: Tx,
   receiverUserId: bigint,
   sourceUserId: bigint,
-  sourceWakppuball: OwnedWithModel
-) {
+  sourceWakppuball: OwnedWithModel,
+  isCampusMatch: boolean
+): Promise<{ owned: OwnedWithModel; isNewPartner: boolean }> {
   const existing = await tx.userWakppuball.findFirst({
     where: {
       ownerUserId: receiverUserId,
@@ -182,21 +186,23 @@ async function createOrRefillMatchedOwnedWakppuball(
   });
 
   if (existing) {
-    return tx.userWakppuball.update({
+    const owned = await tx.userWakppuball.update({
       where: { id: existing.id },
       data: {
         wakppuballModelId: sourceWakppuball.wakppuballModelId,
         remainingBreakCount: sourceWakppuball.model.defaultBreakCount,
         status: 'ACTIVE',
-        consumedAt: null
+        consumedAt: null,
+        isCampusMatch
       },
       include: {
         model: true
       }
     });
+    return { owned, isNewPartner: false };
   }
 
-  return tx.userWakppuball.create({
+  const owned = await tx.userWakppuball.create({
     data: {
       ownerUserId: receiverUserId,
       wakppuballModelId: sourceWakppuball.wakppuballModelId,
@@ -204,12 +210,14 @@ async function createOrRefillMatchedOwnedWakppuball(
       acquiredFromUserId: sourceUserId,
       isMain: false,
       remainingBreakCount: sourceWakppuball.model.defaultBreakCount,
-      status: 'ACTIVE'
+      status: 'ACTIVE',
+      isCampusMatch
     },
     include: {
       model: true
     }
   });
+  return { owned, isNewPartner: true };
 }
 
 function toMatchedResponse(
@@ -233,6 +241,7 @@ function toMatchedResponse(
       customization: receivedWakppuball.model.customizationJson,
       fracture: receivedWakppuball.model.fractureJson,
       acquiredType: receivedWakppuball.acquiredType,
+      isCampusMatch: receivedWakppuball.isCampusMatch,
       remainingBreakCount: receivedWakppuball.remainingBreakCount,
       status: receivedWakppuball.status,
       acquiredAt: receivedWakppuball.acquiredAt.toISOString()
@@ -297,24 +306,15 @@ matchingRouter.post(
     const body = validateBody(matchingQueueSchema, req);
     const ownerUserId = BigInt(req.user.id);
 
-    if (body.latitude === undefined || body.longitude === undefined) {
-      await recordLocationVerification(ownerUserId, false);
-      throw new ApiError(
-        400,
-        'LOCATION_REQUIRED',
-        '매칭하려면 위치 정보가 필요합니다.'
-      );
-    }
-
-    const locationPassed = isInsideCampus(body.latitude, body.longitude);
-    await recordLocationVerification(ownerUserId, locationPassed);
-
-    if (!locationPassed) {
-      throw new ApiError(
-        400,
-        'OUTSIDE_CAMPUS_AREA',
-        '캠퍼스 안에서만 매칭할 수 있습니다.'
-      );
+    // Location is no longer required or blocking — matching always proceeds.
+    // It's only used to decide whether this match counts as an on-campus
+    // exchange (isCampusMatch below), a cosmetic badge on the resulting
+    // wakppuball. No coordinates submitted -> just not a campus match; skip
+    // logging entirely since there was no check to log.
+    let locationVerified = false;
+    if (body.latitude !== undefined && body.longitude !== undefined) {
+      locationVerified = isInsideCampus(body.latitude, body.longitude);
+      await recordLocationVerification(ownerUserId, locationVerified);
     }
 
     const result = await prisma.$transaction(async (tx) => {
@@ -342,7 +342,8 @@ matchingRouter.post(
           data: {
             userId: ownerUserId,
             wakppuballOwnedId: selectedWakppuball.id,
-            status: 'WAITING'
+            status: 'WAITING',
+            locationVerified
           }
         });
 
@@ -355,19 +356,25 @@ matchingRouter.post(
 
       const waitingUserId = waitingEntry.entry.userId;
       const waitingUserSelectedWakppuball = waitingEntry.selectedWakppuball;
+      // A match only counts as an on-campus exchange if *both* sides'
+      // location checks passed — one side matching from off-campus (or with
+      // no location at all) means no badge for either side.
+      const isCampusMatch = locationVerified && waitingEntry.entry.locationVerified;
 
       const [waitingUserReceived, currentUserReceived] = await Promise.all([
         createOrRefillMatchedOwnedWakppuball(
           tx,
           waitingUserId,
           ownerUserId,
-          selectedWakppuball
+          selectedWakppuball,
+          isCampusMatch
         ),
         createOrRefillMatchedOwnedWakppuball(
           tx,
           ownerUserId,
           waitingUserId,
-          waitingUserSelectedWakppuball
+          waitingUserSelectedWakppuball,
+          isCampusMatch
         )
       ]);
 
@@ -388,7 +395,7 @@ matchingRouter.post(
           data: {
             status: 'MATCHED',
             matchHistoryId: matchHistory.id,
-            receivedWakppuballId: waitingUserReceived.id
+            receivedWakppuballId: waitingUserReceived.owned.id
           }
         }),
         tx.matchingQueueEntry.create({
@@ -397,9 +404,15 @@ matchingRouter.post(
             wakppuballOwnedId: selectedWakppuball.id,
             status: 'MATCHED',
             matchHistoryId: matchHistory.id,
-            receivedWakppuballId: currentUserReceived.id
+            receivedWakppuballId: currentUserReceived.owned.id,
+            locationVerified
           }
         }),
+        // totalAcquiredCount is a pure match-count: +1 per side, every match,
+        // no dedup. distinctMatchedUserCount only moves when the OTHER side
+        // was a genuinely new partner for THIS side (isNewPartner from the
+        // create-vs-refill branch above) — a re-match with someone already
+        // matched before doesn't grow it again.
         tx.user.update({
           where: {
             id: waitingUserId
@@ -407,7 +420,10 @@ matchingRouter.post(
           data: {
             totalAcquiredCount: {
               increment: 1
-            }
+            },
+            ...(waitingUserReceived.isNewPartner
+              ? { distinctMatchedUserCount: { increment: 1 } }
+              : {})
           }
         }),
         tx.user.update({
@@ -417,7 +433,10 @@ matchingRouter.post(
           data: {
             totalAcquiredCount: {
               increment: 1
-            }
+            },
+            ...(currentUserReceived.isNewPartner
+              ? { distinctMatchedUserCount: { increment: 1 } }
+              : {})
           }
         }),
         // A successful match "refreshes" the ball each side sent, back to a
@@ -457,7 +476,7 @@ matchingRouter.post(
       return toMatchedResponse(
         matchHistory.id,
         waitingUser,
-        currentUserReceived
+        currentUserReceived.owned
       );
     });
 

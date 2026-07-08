@@ -11,7 +11,17 @@ model User {
   id                       BigInt                    @id @default(autoincrement())
   username                 String                    @unique @db.VarChar(20)
   passwordHash             String                    @map("password_hash") @db.VarChar(255)
+  // Pure match-count now (see 20260708100000_... migration note) — no
+  // longer +1 on ball creation, only +1 per side on every completed match.
   totalAcquiredCount       Int                       @default(0) @map("total_acquired_count")
+  // Lifetime wax-break count, +1 on every successful POST /:ownedId/break
+  // regardless of which ball. No historical backfill possible (no event log
+  // existed before this column).
+  totalBreakCount          Int                       @default(0) @map("total_break_count")
+  // Cumulative distinct partners ever matched with (deduped) — maintained
+  // as a counter rather than computed live so the leaderboard is a plain
+  // ORDER BY. See createOrRefillMatchedOwnedWakppuball's isNewPartner.
+  distinctMatchedUserCount Int                       @default(0) @map("distinct_matched_user_count")
   createdAt                DateTime                  @default(now()) @map("created_at")
   createdModels            WakppuballModel[]         @relation("CreatedModels")
   ownedWakppuballs         UserWakppuball[]          @relation("OwnedWakppuballs")
@@ -48,6 +58,11 @@ model UserWakppuball {
   isMain               Boolean           @default(false) @map("is_main")
   remainingBreakCount  Int                    @default(3) @map("remaining_break_count")
   status               OwnedWakppuballStatus  @default(ACTIVE)
+  // True only when the match/refill that most recently produced this row's
+  // current state had both sides verified inside the campus geofence — not
+  // sticky, overwritten on every refill. Purely cosmetic (a badge), never
+  // gates anything. See matching.routes.ts.
+  isCampusMatch        Boolean                @default(false) @map("is_campus_match")
   acquiredAt           DateTime               @default(now()) @map("acquired_at")
   consumedAt           DateTime?              @map("consumed_at")
   owner                User                   @relation("OwnedWakppuballs", fields: [ownerUserId], references: [id])
@@ -103,6 +118,9 @@ model MatchingQueueEntry {
   userId                BigInt              @map("user_id")
   wakppuballOwnedId     BigInt              @map("wakppuball_owned_id")
   status                MatchingQueueStatus @default(WAITING)
+  // Was this entry's submitted location inside the campus geofence (false if
+  // no coordinates were submitted at all — location is optional now).
+  locationVerified      Boolean             @default(false) @map("location_verified")
   matchHistoryId        BigInt?             @map("match_history_id")
   receivedWakppuballId  BigInt?             @map("received_wakppuball_id")
   enteredAt             DateTime            @default(now()) @map("entered_at")

@@ -376,11 +376,13 @@ function InteractiveWakppuball({
       if (!press || e.pointerId !== press.pointerId) return;
       const moved = Math.hypot(e.clientX - press.startX, e.clientY - press.startY);
       if (moved <= TAP_MOVE_THRESHOLD) {
-        // The sound already played on press (handlePointerDown) — only the
-        // *first* tap on a given piece pops it open here (idempotent,
-        // session-local; that's the part that costs a break).
+        // The squeeze sound already played on press (handlePointerDown) — only
+        // the *first* tap on a given piece pops it open here (idempotent,
+        // session-local; that's the part that costs a break). The crack sound
+        // fires exactly on that break judgement, not on every touch.
         if (!poppedRef.current.has(press.node.name)) {
           poppedRef.current.add(press.node.name);
+          playWakppuballCrackSound();
           onPiecePopped(press.node.name);
         }
       }
@@ -409,9 +411,10 @@ function InteractiveWakppuball({
     if (!hit) return;
     const node = resolvePieceNode(hit.object);
     if (!node) return;
-    // Plays on press, not release — squeezing/cracking should be felt the
-    // instant a finger lands, even if the gesture then turns into a drag.
-    playWakppuballTouchSound();
+    // Squeeze plays on press, not release — the squish should be felt the
+    // instant a finger lands, even if the gesture then turns into a drag. The
+    // crack sound is separate and only fires when a piece actually pops.
+    playWakppuballSqueezeSound();
     const hitPoint = hit.point.clone();
     node.parent?.worldToLocal(hitPoint); // match the pieces' parent-local space
     pressRef.current = { node, hitPoint, startX: e.nativeEvent.clientX, startY: e.nativeEvent.clientY, pointerId: e.nativeEvent.pointerId };

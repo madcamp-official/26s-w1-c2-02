@@ -122,14 +122,24 @@
     "id": "1",
     "username": "dohyun",
     "mainWakppuballId": "10",
-    "collectionCount": 3,
+    "distinctMatchedUserCount": 3,
     "totalAcquiredCount": 5,
+    "totalBreakCount": 12,
+    "tiers": {
+      "breakCount": "GOLD",
+      "distinctMatchedUsers": "SILVER"
+    },
     "createdAt": "2026-07-03T10:00:00.000Z"
   }
 }
 ```
 
-`totalAcquiredCount`: 지금까지 획득한 전체 누적 개수. `POST /wakppuballs` 성공 시 +1, 매칭 `MATCHED` 확정 시 양측 유저 모두 +1. `CONSUMED`되어 컬렉션에서 사라져도 감소하지 않는 단조 증가 값이다 (`collectionCount`는 현재 보유 중인 개수라 감소할 수 있지만, `totalAcquiredCount`는 감소하지 않는다).
+세 카운터 값 모두 단조 증가(감소하지 않음):
+- `totalAcquiredCount`: 순수 매칭 횟수. 매칭 `MATCHED` 확정 시 양측 유저 모두 +1. (예전엔 `POST /wakppuballs` 성공 시에도 +1이었으나 더 이상 아니다.)
+- `totalBreakCount`: `POST /:ownedId/break` 성공 시 +1, 어떤 왁뿌볼이든 상관없이 합산.
+- `distinctMatchedUserCount`: 누적 중복 없는 매칭 상대 수. 상대가 처음 매칭하는 사람일 때만 +1(같은 상대와 재매칭해도 늘지 않는다). 예전의 `collectionCount`(현재 활성 보유 개수, 본인이 만든 볼 포함)를 대체한 필드로, 이름과 의미가 다르다 — `GET /collection`이 실제로 보여주는 목록 자체는 변화 없음(본인이 만든 볼도 그대로 포함), 이건 프로필 요약 수치일 뿐이다.
+
+`tiers`: `totalBreakCount`/`distinctMatchedUserCount` 각각에 대해 전체 유저 모집단 기준 백분위로 계산한 티어(`MASTER|RUBY|DIAMOND|EMERALD|GOLD|SILVER|BRONZE`, 항상 실시간 계산, 캐시 없음). 상위 5% Master, 5~10% Ruby, 10~20% Diamond, 20~40% Emerald, 40~60% Gold, 60~80% Silver, 하위 20% Bronze. 단, 값이 0이면 백분위 계산과 무관하게 무조건 Bronze(전원이 0인 경우 전원 Master가 되는 걸 방지).
 
 ### 유저네임 수정
 
@@ -141,7 +151,7 @@
 }
 ```
 
-`username` 규칙은 회원가입과 동일(`^[a-zA-Z0-9_]+$`, 2~20자).
+`username` 규칙은 회원가입과 동일(`^[a-zA-Z0-9_가-힣]+$`, 2~20자 — 완성형 한글 음절 허용, 자모 단독 불가).
 
 ```json
 {
@@ -384,6 +394,7 @@
         "thicknessPreset": "medium"
       },
       "acquiredType": "CREATED",
+      "isCampusMatch": false,
       "remainingBreakCount": 2,
       "status": "ACTIVE",
       "isMain": true,
@@ -412,6 +423,7 @@
         "id": "2",
         "username": "yoobin"
       },
+      "isCampusMatch": true,
       "remainingBreakCount": 3,
       "status": "ACTIVE",
       "isMain": false,
@@ -421,7 +433,7 @@
 }
 ```
 
-`CONSUMED` 상태의 왁뿌볼은 컬렉션 목록에 포함하지 않는다.
+`CONSUMED` 상태의 왁뿌볼은 컬렉션 목록에 포함하지 않는다. `isCampusMatch`는 이 볼을 준 상대와의 매칭이 양쪽 다 캠퍼스 반경 안에서 이뤄졌는지(자신이 생성한 볼은 항상 `false`) — 매칭 대기열 입장 섹션 참고.
 
 ### 대표 왁뿌볼 선택
 
@@ -449,7 +461,7 @@
 
 `POST /matching/queue`
 
-요청 바디에 `latitude`/`longitude`(number)가 필수다. 위치 동의 기반 매칭이므로 캠퍼스 허용 반경 밖이거나 좌표가 없으면 대기열 진입 자체가 거부된다. `accuracy` 값은 받지 않는다. 어떤 왁뿌볼을 보낼지 고르는 파라미터는 없다 — 항상 호출자가 생성한 고유 왁뿌볼로 자동 결정된다(위 "MVP 상호작용 규칙" 참고).
+요청 바디의 `latitude`/`longitude`(number)는 **선택 사항**이다 — 위치는 더 이상 매칭을 막지 않는다. 제공하면 캠퍼스 반경 안인지 검증해서, 상대와 매칭 성사 시 양쪽 다 캠퍼스 안이었을 때만 `isCampusMatch: true`가 붙는다(아래 참고). `accuracy` 값은 받지 않는다. 어떤 왁뿌볼을 보낼지 고르는 파라미터는 없다 — 항상 호출자가 생성한 고유 왁뿌볼로 자동 결정된다(위 "MVP 상호작용 규칙" 참고).
 
 ```json
 {
@@ -485,12 +497,15 @@
     "fracture": {
       "thicknessPreset": "medium"
     },
+    "isCampusMatch": true,
     "remainingBreakCount": 3
   }
 }
 ```
 
 상대에게서 받은 왁뿌볼은 상대 유저당 컬렉션에 항상 하나만 존재한다 — 같은 상대와 다시 매칭되면 새 항목을 만들지 않고 기존 항목의 `remainingBreakCount`를 3으로 리필한다(이미 `CONSUMED`였어도 `ACTIVE`로 되돌아온다). 매칭에 사용한 자신의 왁뿌볼도 이 시점에 `remainingBreakCount`가 3으로 리셋된다 — 위 "MVP 상호작용 규칙" 참고.
+
+`isCampusMatch`는 이 매칭 시점에 **양쪽 다** 캠퍼스 반경 안에서 좌표를 보냈을 때만 `true`다(한쪽이라도 좌표 미제공/반경 밖이면 양쪽 다 `false`). 재매칭할 때마다 그 시점 기준으로 다시 계산되며 이전 값을 유지하지 않는다 — 순수 표시용(nubzuki 아이콘)이고 매칭 성사 여부에는 영향 없다.
 
 즉시 매칭 상대가 없으면 대기열에 들어간다:
 
@@ -502,14 +517,12 @@
 }
 ```
 
-좌표 자체는 저장하지 않는다. 위치 검증 시도 결과(성공/실패 여부 + 시각)만 별도로 로그를 남긴다.
+좌표 자체는 저장하지 않는다. 좌표가 제공된 경우에만 위치 검증 시도 결과(성공/실패 여부 + 시각)를 로그로 남긴다(좌표 미제공 시에는 검증 자체가 없었으므로 로그도 없음).
 
-주요 에러 (아래 순서대로 확인하며, 앞 조건에서 실패하면 뒤 조건은 확인하지 않는다):
+주요 에러:
 
 | Status | code | 상황 |
 |---|---|---|
-| 400 | `LOCATION_REQUIRED` | `latitude`/`longitude` 미제공 |
-| 400 | `OUTSIDE_CAMPUS_AREA` | 좌표는 있으나 캠퍼스 허용 반경 밖 |
 | 400 | `MAIN_WAKPPUBALL_REQUIRED` | 생성한 왁뿌볼이 없어 매칭 불가 |
 | 409 | `ALREADY_IN_QUEUE` | 이미 매칭 대기 중 |
 | 409 | `WAKPPUBALL_CONSUMED` | 이미 소멸된 왁뿌볼 |
@@ -587,6 +600,25 @@
 | `NONE` | 매칭 대기 중이 아니고 보여줄 매칭 결과도 없음 |
 | `WAITING` | 매칭 대기 중 |
 | `MATCHED` | 매칭 성사. 별도 확인/교환 단계 없이 이미 완료된 상태 (파트너 왁뿌볼은 이미 컬렉션에 반영됨) |
+
+## 리더보드 Leaderboard
+
+### 리더보드 조회
+
+`GET /leaderboard` (인증 필요)
+
+```json
+{
+  "breakCount": [
+    { "rank": 1, "userId": "3", "username": "dohyun", "value": 42, "tier": "MASTER" }
+  ],
+  "distinctMatchedUsers": [
+    { "rank": 1, "userId": "7", "username": "somi", "value": 9, "tier": "MASTER" }
+  ]
+}
+```
+
+두 배열 모두 상위 10명, 각각 `totalBreakCount`/`distinctMatchedUserCount` 기준 내림차순. `tier`는 `GET /users/me`의 `tiers`와 동일한 계산 로직(백분위, 값 0은 무조건 Bronze)을 전체 유저 모집단에 대해 실시간으로 적용한 것이다.
 
 ## 3D 모델 업로드
 
