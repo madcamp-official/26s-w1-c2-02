@@ -374,18 +374,21 @@ function SegmentButton<T extends string>({
   value,
   selected,
   children,
-  onSelect
+  onSelect,
+  disabled
 }: {
   value: T;
   selected: boolean;
   children: ReactNode;
   onSelect: (value: T) => void;
+  disabled?: boolean;
 }) {
   return (
     <button
       type="button"
       className={selected ? 'segment-button selected' : 'segment-button'}
       onClick={() => onSelect(value)}
+      disabled={disabled}
     >
       {children}
     </button>
@@ -444,6 +447,7 @@ export function MyWakppuballPage() {
   const [createError, setCreateError] = useState<string | null>(null);
 
   const patternSegment = pattern.type === 'preset' ? pattern.id : 'custom';
+  const uploadingSkin = skinUploadState.kind === 'uploading';
 
   function handlePatternSegmentSelect(value: 'none' | 'dots' | 'stripes' | 'custom') {
     if (value === 'custom') {
@@ -870,17 +874,37 @@ export function MyWakppuballPage() {
               <div className="field-stack">
                 <span>패턴</span>
                 <div className="segmented-control" aria-label="패턴 선택">
-                  <SegmentButton value="none" selected={patternSegment === 'none'} onSelect={handlePatternSegmentSelect}>
+                  <SegmentButton
+                    value="none"
+                    selected={patternSegment === 'none'}
+                    onSelect={handlePatternSegmentSelect}
+                    disabled={uploadingSkin}
+                  >
                     기본
                   </SegmentButton>
-                  <SegmentButton value="dots" selected={patternSegment === 'dots'} onSelect={handlePatternSegmentSelect}>
+                  <SegmentButton
+                    value="dots"
+                    selected={patternSegment === 'dots'}
+                    onSelect={handlePatternSegmentSelect}
+                    disabled={uploadingSkin}
+                  >
                     dots
                   </SegmentButton>
-                  <SegmentButton value="stripes" selected={patternSegment === 'stripes'} onSelect={handlePatternSegmentSelect}>
+                  <SegmentButton
+                    value="stripes"
+                    selected={patternSegment === 'stripes'}
+                    onSelect={handlePatternSegmentSelect}
+                    disabled={uploadingSkin}
+                  >
                     stripes
                   </SegmentButton>
-                  <SegmentButton value="custom" selected={patternSegment === 'custom'} onSelect={handlePatternSegmentSelect}>
-                    {skinUploadState.kind === 'uploading' ? '업로드 중…' : '내 사진'}
+                  <SegmentButton
+                    value="custom"
+                    selected={patternSegment === 'custom'}
+                    onSelect={handlePatternSegmentSelect}
+                    disabled={uploadingSkin}
+                  >
+                    {uploadingSkin ? '업로드 중…' : '내 사진'}
                   </SegmentButton>
                 </div>
                 <input
@@ -927,7 +951,7 @@ export function MyWakppuballPage() {
                 className="primary-button"
                 type="button"
                 onClick={handleCreate}
-                disabled={creating || skinUploadState.kind === 'uploading'}
+                disabled={creating || uploadingSkin}
               >
                 {creating ? '저장 중…' : '나의 왁뿌볼 만들기'}
               </button>
