@@ -283,6 +283,11 @@ function InteractiveWakppuball({
   // compiles; the pattern-mode effect below writes into it to switch none/dots/stripes
   // live without re-triggering a shader recompile.
   const outerPatternUniformsRef = useRef<PatternUniforms | null>(null);
+  // The last runtime-loaded custom skin texture, tracked so it can be disposed
+  // when replaced or on unmount — three.js doesn't free GPU texture memory on GC,
+  // so swapping photos would otherwise leak VRAM. The shared PLACEHOLDER texture
+  // is never stored here, so it's never disposed.
+  const loadedCustomTextureRef = useRef<Texture | null>(null);
   // useGLTF caches the scene; clone per mount so cracks/depress reset every visit. Then
   // hollow the solid wedges into thin shell segments (radial remap r∈[0,1]→[SHELL_INNER,1])
   // so a large inner ball fits inside and can bulge out through the gaps. Geometry is
@@ -372,9 +377,14 @@ function InteractiveWakppuball({
     new TextureLoader().load(
       resolveUploadedAssetUrl(pattern.imageUrl),
       (texture) => {
-        if (cancelled) return;
+        if (cancelled) {
+          texture.dispose(); // resolved after this effect was superseded — don't leak it
+          return;
+        }
         texture.wrapS = texture.wrapT = RepeatWrapping;
         texture.colorSpace = SRGBColorSpace;
+        loadedCustomTextureRef.current?.dispose(); // free the photo we're replacing
+        loadedCustomTextureRef.current = texture;
         uniforms.uCustomMap.value = texture;
         uniforms.uPatternMode.value = PATTERN_MODE.custom;
       },
@@ -391,6 +401,15 @@ function InteractiveWakppuball({
       cancelled = true;
     };
   }, [scene, patternDepKey]);
+
+  // Free the last loaded custom skin texture when this ball unmounts.
+  useEffect(
+    () => () => {
+      loadedCustomTextureRef.current?.dispose();
+      loadedCustomTextureRef.current = null;
+    },
+    []
+  );
 
   // Every piece with its rest position and radial (origin→rest) direction, once.
   const pieces = useMemo<Piece[]>(() => {
