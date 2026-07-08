@@ -11,7 +11,7 @@ import {
 } from 'react';
 import { Canvas, useFrame, type ThreeEvent } from '@react-three/fiber';
 import { Html, OrbitControls, useGLTF } from '@react-three/drei';
-import { Matrix4, Quaternion, Vector3, type Object3D } from 'three';
+import { Matrix4, Mesh, Vector3, type Object3D } from 'three';
 import { playWakppuballTouchSound } from '../../shared/sound/soundManager';
 import { breakWakppuball } from './wakppuballApi';
 // Vite resolves this to a served asset URL. The GLB is Draco-compressed;
@@ -28,36 +28,72 @@ const TAP_MOVE_THRESHOLD = 8;
 const MIN_ZOOM_DISTANCE = 1.8;
 const MAX_ZOOM_DISTANCE = 6;
 
-// ── Press deformation (difficulty "중"). All tunable — expect to adjust together
-//    during review. Pressing deforms not just the hit piece but every piece whose
-//    rest position is within PRESS_RADIUS of the hit point, with a smooth falloff.
-const PRESS_RADIUS = 0.5; // sphere radius is 1.0; a ~half-sphere cap of influence
-const COMPRESS_STRENGTH = 0.12; // inward sink; peaks at the press center
-const SPREAD_STRENGTH = 0.25; // outward tangential splay; peaks mid-falloff
-const POSITION_LERP = 0.28; // per-frame approach toward target (press AND release)
+// ── Squash press (Phase 6.5, reference-matched — squishing a soft ball). Pressing
+//    COMPRESSES the ball along the press axis (â = press point direction) and, to
+//    conserve volume, SPREADS everything perpendicular to it (the surroundings squish
+//    out to the sides). Every point is decomposed into an axial part (scaled down) and
+//    a perpendicular part (scaled up). The inner ball spreads MUCH more than the thin
+//    shell, so it bulges past the shell and oozes out through the side gaps between
+//    segments — like jelly through a net. Shell and inner share the axial compression
+//    so they stay coupled along the axis. (Pieces only TRANSLATE — no rotate-to-normal.)
+const SHELL_COMPRESS = 0.22; // axial flatten of the outer shell at full press
+const SHELL_EXPAND = 0.1; // perpendicular widen of the shell (a net barely stretches)
+const CORE_COMPRESS = 0.22; // axial flatten of the inner ball (matches the shell → coupled)
+const CORE_EXPAND = 0.6; // perpendicular spread of the inner — large, so it oozes out the gaps
+const POSITION_LERP = 0.28; // per-frame approach of a piece toward its target
 
-// ── Permanent crack (difficulty "하"). A popped piece stays nudged inward along its
-//    radial for the session, widening its hairline gaps so the inner material shows.
-//    Replaces the old darken-the-material approach with geometry only.
-const CRACK_DEPTH = 0.03;
+// ── Shell hollowing. The GLB pieces are SOLID wedges (verts span radius 0→1, i.e. each
+//    fills a pie slice to the centre), so the "outer" reads as full-radius-thick. On
+//    load we radially remap every shard vertex r∈[0,1] → [SHELL_INNER, 1], turning the
+//    solid wedges into thin shell segments and freeing the interior for a large inner
+//    ball that can bulge out through the gaps. (Goes beyond the "don't touch piece
+//    geometry" asset-contract note — same deliberate step-over as Phase 6.)
+const SHELL_INNER = 0.78; // inner face radius of the hollowed segments (thickness ≈ 0.22)
 
-// ── Macro squash & stretch (whole-ball). A single non-uniform scale on the pieces'
-//    parent group, layered on top of (and independent of) the per-piece offsets:
-//    the ball flattens along the press axis and bulges perpendicular to it. Tunable.
-const SQUASH_AMOUNT = 0.85; // compression fraction along the press axis at full hold
-const SQUASH_EXPAND_K = 0.5; // perpendicular bulge factor (volume-preservation approx)
-const SQUASH_LERP = 0.1; // springiness of the squash growing while held / relaxing on release
-// On a real release the ball stays mostly squashed and only springs back a little,
-// for a soft "memory-foam" feel. This is the fraction of squash recovered on release
-// (0 = stays fully deformed, 1 = returns to round). A rotation-drag recovers fully.
-const SQUASH_RELEASE_RECOVERY = 0.15;
+// ── Permanent crack (tap-to-pop = the break mechanic). Kept small now that pieces are
+//    thin segments and the main reveal is the inner bulging through gaps — a popped
+//    piece just parts a little rather than flinging off.
+const CRACK_LIFT = 0.05; // outward radial lift of a popped piece
+const CRACK_SLIDE = 0.08; // tangential slide off its own footprint
 
-const UNIT_Z = new Vector3(0, 0, 1); // reference axis we align the press axis to for R·S·R⁻¹
+// ── Inner core ball. Sits just under the hollowed shell's inner face (SHELL_INNER) so
+//    it's hidden while intact, but large — on press it balloons outward past the shell.
+const INNER_CORE_RADIUS = 0.74;
+
+// Press strength ramps 0→1 while held and, on a real release, settles to a frozen
+// residual (memory-foam: the bulge stays a bit). A drag resets it to 0 (rolling the
+// ball shouldn't leave it deformed). Replaces the old macro-squash spring.
+const PRESS_LERP = 0.12; // springiness of the strength ramp up / relax down
+const PRESS_RELEASE_RECOVERY = 0.15; // fraction of the bulge recovered on release
+
+const UP_REF = new Vector3(0, 1, 0); // for deriving a stable per-piece tangent (crack slide)
+const SIDE_REF = new Vector3(1, 0, 0); // fallback tangent basis near the poles (up ∥ radial)
 
 // Smooth 0→1 curve. x is normalized closeness: 1 at the press center, 0 at the edge.
 function smoothstep(x: number): number {
   const t = x < 0 ? 0 : x > 1 ? 1 : x;
   return t * t * (3 - 2 * t);
+}
+
+// Squash displacement at `point`: decompose into its component ALONG the press axis
+// (scaled by 1−compress·strength → flatten) and PERPENDICULAR to it (scaled by
+// 1+expand·strength → spread sideways), and return the resulting offset. `axis` must be
+// unit. Pieces call it with the shell params, the inner-core vertices with the (larger-
+// spread) core params — the shared axial compression keeps them coupled along the axis
+// while the inner spreads out past the shell.
+const _sqAxial = new Vector3();
+const _sqPerp = new Vector3();
+function squashOffset(out: Vector3, point: Vector3, axis: Vector3, strength: number, compress: number, expand: number): Vector3 {
+  out.set(0, 0, 0);
+  if (strength <= 0.0001) return out;
+  const axialLen = point.dot(axis);
+  _sqAxial.copy(axis).multiplyScalar(axialLen); // component along the press axis
+  _sqPerp.copy(point).sub(_sqAxial); // component perpendicular to it
+  const newAxialLen = axialLen * (1 - compress * strength);
+  const perpScale = 1 + expand * strength;
+  // out = (axis·newAxialLen + perp·perpScale) − point
+  out.copy(axis).multiplyScalar(newAxialLen).addScaledVector(_sqPerp, perpScale).sub(point);
+  return out;
 }
 
 // A piece node is named exactly piece_001..piece_040. Its mesh has two primitives
@@ -73,7 +109,7 @@ function resolvePieceNode(object: Object3D): Object3D | null {
   return null;
 }
 
-type Piece = { node: Object3D; rest: Vector3; radial: Vector3 };
+type Piece = { node: Object3D; rest: Vector3; radial: Vector3; tangent: Vector3 };
 
 // Phase 1–3: render intact + achromatic (no color/pattern yet — those come later).
 // Press deforms a radius of pieces around the hit point (compress + spread); the hit
@@ -88,8 +124,41 @@ function InteractiveWakppuball({
   interactionDisabled: boolean;
 }) {
   const { scene: original } = useGLTF(wakppuballModelUrl);
-  // useGLTF caches the scene; clone per mount so cracks/depress reset every visit.
-  const scene = useMemo(() => original.clone(true), [original]);
+  // useGLTF caches the scene; clone per mount so cracks/depress reset every visit. Then
+  // hollow the solid wedges into thin shell segments (radial remap r∈[0,1]→[SHELL_INNER,1])
+  // so a large inner ball fits inside and can bulge out through the gaps. Geometry is
+  // cloned per mesh first, so we don't mutate the shared useGLTF-cached buffers.
+  const scene = useMemo(() => {
+    const s = original.clone(true);
+    s.updateMatrixWorld(true);
+    const local = new Vector3();
+    const world = new Vector3();
+    const inv = new Matrix4();
+    s.traverse((node) => {
+      const mesh = node as Mesh;
+      if (!mesh.isMesh || !mesh.geometry) return;
+      mesh.geometry = mesh.geometry.clone();
+      const pos = mesh.geometry.attributes.position;
+      inv.copy(mesh.matrixWorld).invert();
+      for (let i = 0; i < pos.count; i++) {
+        // vertex → scene-space radius (matrixWorld folds in the piece's centroid offset)
+        world.copy(local.set(pos.getX(i), pos.getY(i), pos.getZ(i))).applyMatrix4(mesh.matrixWorld);
+        const r = world.length();
+        if (r > 1e-4) {
+          world.multiplyScalar((SHELL_INNER + (1 - SHELL_INNER) * r) / r); // remap radius
+          local.copy(world).applyMatrix4(inv); // back to mesh-local, keeping the node transform
+          pos.setXYZ(i, local.x, local.y, local.z);
+        }
+      }
+      pos.needsUpdate = true;
+      mesh.geometry.computeVertexNormals();
+      // Positions moved → the stale bounding volumes would make the raycaster miss the
+      // shell (it culls by bounding sphere first). Recompute so presses still hit.
+      mesh.geometry.computeBoundingSphere();
+      mesh.geometry.computeBoundingBox();
+    });
+    return s;
+  }, [original]);
 
   // Every piece with its rest position and radial (origin→rest) direction, once.
   const pieces = useMemo<Piece[]>(() => {
@@ -97,7 +166,13 @@ function InteractiveWakppuball({
     scene.traverse((node) => {
       if (PIECE_NODE_NAME.test(node.name)) {
         const rest = node.position.clone();
-        list.push({ node, rest, radial: rest.clone().normalize() });
+        const radial = rest.clone().normalize();
+        // Stable tangent for sliding a popped piece off its own hole. cross with
+        // world-up, falling back to world-x near the poles where up ∥ radial.
+        const tangent = new Vector3().crossVectors(radial, UP_REF);
+        if (tangent.lengthSq() < 1e-6) tangent.crossVectors(radial, SIDE_REF);
+        tangent.normalize();
+        list.push({ node, rest, radial, tangent });
       }
     });
     return list;
@@ -109,31 +184,29 @@ function InteractiveWakppuball({
   // rest positions directly.
   const pressRef = useRef<{ node: Object3D; hitPoint: Vector3; startX: number; startY: number; pointerId: number } | null>(null);
   const targetVec = useRef(new Vector3());
-  const spreadVec = useRef(new Vector3());
+  const offsetVec = useRef(new Vector3());
 
-  // Macro squash: driven by a single scalar (0 = round, grows while held). Applied
-  // as a manual non-uniform-scale matrix on `scene`, so we manage its matrix ourselves.
-  const baseMatrix = useRef(new Matrix4());
-  const squashAmount = useRef(0);
-  // Where the squash relaxes to when not pressing: 0 while round, or a frozen
-  // residual after a real release (so it stays mostly deformed = squishy memory).
-  const residualAmount = useRef(0);
-  const squashAxis = useRef(new Vector3(0, 0, 1));
-  const mq = useRef(new Quaternion());
-  const mR = useRef(new Matrix4());
-  const mRinv = useRef(new Matrix4());
-  const mS = useRef(new Matrix4());
+  // Soft-body press strength (0 = round, ramps to 1 while held). Scalar shared by the
+  // whole field; the press *location* is remembered separately so a residual dent
+  // stays put after release.
+  const pressStrength = useRef(0);
+  // What the strength relaxes to when not pressing: 0 while round, or a frozen residual
+  // after a real release (memory-foam). The press point is kept so the dent stays put.
+  const residualStrength = useRef(0);
+  const pressPointRef = useRef(new Vector3(0, 0, 1));
+  const pressAxis = useRef(new Vector3(0, 0, 1)); // normalized press direction (squash axis)
 
-  // Take over `scene`'s matrix so we can apply an arbitrary-axis non-uniform scale
-  // (object.scale is axis-aligned only). Capture its base transform first.
-  useEffect(() => {
-    scene.updateMatrix();
-    baseMatrix.current.copy(scene.matrix);
-    scene.matrixAutoUpdate = false;
-    return () => {
-      scene.matrixAutoUpdate = true;
-    };
-  }, [scene]);
+  // Inner core soft-body deform. The core mesh shares the scene-local space of the
+  // pieces (probe confirmed: pieces' parent === scene root), so the same field +
+  // pressPoint drives it directly. Its rest (pristine sphere) vertices are cached
+  // once and re-deformed each frame while pressed.
+  const coreRef = useRef<Mesh>(null);
+  const coreRestPositions = useRef<Float32Array | null>(null);
+  const coreVertexVec = useRef(new Vector3());
+  const coreOffsetVec = useRef(new Vector3());
+  // True while the core geometry is currently displaced, so we know to run one final
+  // pass resetting it to the pristine sphere when the press strength returns to ~0.
+  const coreDirty = useRef(false);
 
   // Window-level up/move so a drag that leaves the ball still aborts the press.
   useEffect(() => {
@@ -141,10 +214,10 @@ function InteractiveWakppuball({
       const press = pressRef.current;
       if (!press || e.pointerId !== press.pointerId) return;
       const moved = Math.hypot(e.clientX - press.startX, e.clientY - press.startY);
-      // Turned into a drag → hand off to rotation; fully un-squash (rotating a ball
+      // Turned into a drag → hand off to rotation; fully un-dent (rotating a ball
       // shouldn't leave it dented), no pop.
       if (moved > TAP_MOVE_THRESHOLD) {
-        residualAmount.current = 0;
+        residualStrength.current = 0;
         pressRef.current = null;
       }
     }
@@ -161,8 +234,8 @@ function InteractiveWakppuball({
           onPiecePopped(press.node.name);
         }
       }
-      // Real release → keep most of the squash, spring back only a little.
-      residualAmount.current = squashAmount.current * (1 - SQUASH_RELEASE_RECOVERY);
+      // Real release → keep most of the dent, spring back only a little (memory-foam).
+      residualStrength.current = pressStrength.current * (1 - PRESS_RELEASE_RECOVERY);
       pressRef.current = null;
     }
     window.addEventListener('pointermove', handleMove);
@@ -194,60 +267,84 @@ function InteractiveWakppuball({
     pressRef.current = { node, hitPoint, startX: e.nativeEvent.clientX, startY: e.nativeEvent.clientY, pointerId: e.nativeEvent.pointerId };
   }
 
-  // Drive every piece toward rest + (permanent crack) + (temporary press), smoothly.
+  // Drive every piece toward rest + (permanent crack) + (soft-body press field).
   useFrame(() => {
     const press = pressRef.current;
+    // Remember the press location while held so a residual dent stays put after release.
+    if (press) pressPointRef.current.copy(press.hitPoint);
+    // Strength ramps toward 1 while held, or toward the frozen residual after release.
+    const targetStrength = press ? 1 : residualStrength.current;
+    pressStrength.current += (targetStrength - pressStrength.current) * PRESS_LERP;
+    const strength = pressStrength.current;
+    const pressPoint = pressPointRef.current;
+    const axis = pressAxis.current;
+    if (pressPoint.lengthSq() > 1e-8) axis.copy(pressPoint).normalize();
+
     for (const piece of pieces) {
       const target = targetVec.current.copy(piece.rest);
 
-      // Permanent crack ("하"): popped pieces sit slightly sunk in, gaps opened.
+      // Permanent crack ("하"): popped pieces lift outward + slide off their hole,
+      // opening a real gap so the inner core shows through (Phase 6).
       if (poppedRef.current.has(piece.node.name)) {
-        target.addScaledVector(piece.radial, -CRACK_DEPTH);
+        target.addScaledVector(piece.radial, CRACK_LIFT);
+        target.addScaledVector(piece.tangent, CRACK_SLIDE);
       }
 
-      // Temporary press ("중"): radius-based, distance falloff around the hit point.
-      if (press) {
-        const dist = piece.rest.distanceTo(press.hitPoint);
-        if (dist < PRESS_RADIUS) {
-          const weight = smoothstep(1 - dist / PRESS_RADIUS);
-          // Compression: inward, strongest at the center of the press.
-          target.addScaledVector(piece.radial, -COMPRESS_STRENGTH * weight);
-          // Spread: outward along the surface (tangential), strongest mid-falloff so
-          // the center mostly sinks while the ring around it splays open.
-          const spread = spreadVec.current.copy(piece.rest).sub(press.hitPoint);
-          spread.addScaledVector(piece.radial, -spread.dot(piece.radial)); // drop radial part
-          if (spread.lengthSq() > 1e-8) {
-            spread.normalize();
-            target.addScaledVector(spread, SPREAD_STRENGTH * weight * (1 - weight));
-          }
-        }
+      // Squash: flatten this segment along the press axis + spread it perpendicular.
+      if (strength > 0.001) {
+        squashOffset(offsetVec.current, piece.rest, axis, strength, SHELL_COMPRESS, SHELL_EXPAND);
+        target.add(offsetVec.current);
       }
 
       piece.node.position.lerp(target, POSITION_LERP);
     }
 
-    // Macro squash & stretch: flatten the whole ball along the press axis, bulge
-    // perpendicular. Independent of the per-piece offsets — parent/child compose.
-    if (press) squashAxis.current.copy(press.hitPoint).normalize();
-    // While held → grow to full; released → settle to the frozen residual (not 0).
-    const targetAmount = press ? SQUASH_AMOUNT : residualAmount.current;
-    squashAmount.current += (targetAmount - squashAmount.current) * SQUASH_LERP;
-
-    if (squashAmount.current > 0.001) {
-      const amount = squashAmount.current;
-      // Align the press axis to Z, scale (perp, perp, along), rotate back: R·S·R⁻¹.
-      mq.current.setFromUnitVectors(UNIT_Z, squashAxis.current);
-      mR.current.makeRotationFromQuaternion(mq.current);
-      mRinv.current.copy(mR.current).transpose(); // rotation inverse = transpose
-      mS.current.makeScale(1 + amount * SQUASH_EXPAND_K, 1 + amount * SQUASH_EXPAND_K, 1 - amount);
-      scene.matrix.copy(baseMatrix.current).multiply(mR.current).multiply(mS.current).multiply(mRinv.current);
-    } else {
-      scene.matrix.copy(baseMatrix.current);
+    // Inner core: squash its vertices with a MUCH larger perpendicular spread than the
+    // shell, so it bulges out past the shell and oozes through the side gaps. 32×32
+    // sphere (~1089 verts); normals recomputed each frame so the bulge shades correctly.
+    const core = coreRef.current;
+    if (core) {
+      const posAttr = core.geometry.attributes.position;
+      if (!coreRestPositions.current) {
+        coreRestPositions.current = new Float32Array(posAttr.array as Float32Array);
+      }
+      const rest = coreRestPositions.current;
+      if (strength > 0.001) {
+        for (let i = 0; i < posAttr.count; i++) {
+          const ix = i * 3;
+          coreVertexVec.current.set(rest[ix], rest[ix + 1], rest[ix + 2]);
+          squashOffset(coreOffsetVec.current, coreVertexVec.current, axis, strength, CORE_COMPRESS, CORE_EXPAND);
+          posAttr.setXYZ(i, rest[ix] + coreOffsetVec.current.x, rest[ix + 1] + coreOffsetVec.current.y, rest[ix + 2] + coreOffsetVec.current.z);
+        }
+        posAttr.needsUpdate = true;
+        core.geometry.computeVertexNormals();
+        coreDirty.current = true;
+      } else if (coreDirty.current) {
+        // Strength fell back to ~0 — settle the core to the pristine sphere once.
+        for (let i = 0; i < posAttr.count; i++) {
+          const ix = i * 3;
+          posAttr.setXYZ(i, rest[ix], rest[ix + 1], rest[ix + 2]);
+        }
+        posAttr.needsUpdate = true;
+        core.geometry.computeVertexNormals();
+        coreDirty.current = false;
+      }
     }
-    scene.matrixWorldNeedsUpdate = true;
   });
 
-  return <primitive object={scene} onPointerDown={handlePointerDown} />;
+  // The inner core sits inside the shell and deforms with the same field as the
+  // pieces (see useFrame). raycastable but unhandled: a press that only hits the core
+  // (through an open gap) resolves to no piece node and is ignored — see
+  // handlePointerDown / resolvePieceNode. 32×32 so per-frame CPU vertex deform + normal
+  // recompute stays cheap.
+  return (
+    <primitive object={scene} onPointerDown={handlePointerDown}>
+      <mesh ref={coreRef}>
+        <sphereGeometry args={[INNER_CORE_RADIUS, 32, 32]} />
+        <meshStandardMaterial color="#ffffff" roughness={0.25} />
+      </mesh>
+    </primitive>
+  );
 }
 
 // The GLB load can fail (network, decode). React Suspense covers "loading";
