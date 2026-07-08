@@ -24,10 +24,11 @@ export function WakppuballVisual({
   // CSS fallback has no way to render an uploaded photo, so a 'custom'
   // pattern just falls back to the "no pattern" look here (Phase 8-B
   // rendering is 3D-only, via WakppuballViewer's triplanar wrap).
+  // pattern.type === 'preset' already narrows this to 'none'|'dots'|'stripes'|
+  // undefined, so a plain ?? default is enough — no need to re-check the id.
   const patternId =
     runtimeCustomization?.pattern?.type === 'preset' ? runtimeCustomization.pattern.id : undefined;
-  const pattern =
-    patternId === 'none' || patternId === 'dots' || patternId === 'stripes' ? patternId : 'none';
+  const pattern = patternId ?? 'none';
 
   return (
     <div
