@@ -146,16 +146,23 @@ wakppuballsRouter.post(
     await mkdir(skinsDir, { recursive: true });
 
     const filename = `${randomUUID()}.webp`;
-    await sharp(req.file.buffer)
-      .rotate() // apply EXIF orientation before resizing, then strip it
-      .resize({
-        width: SKIN_MAX_DIMENSION,
-        height: SKIN_MAX_DIMENSION,
-        fit: 'inside',
-        withoutEnlargement: true
-      })
-      .webp({ quality: 85 })
-      .toFile(join(skinsDir, filename));
+    try {
+      await sharp(req.file.buffer)
+        .rotate() // apply EXIF orientation before resizing, then strip it
+        .resize({
+          width: SKIN_MAX_DIMENSION,
+          height: SKIN_MAX_DIMENSION,
+          fit: 'inside',
+          withoutEnlargement: true
+        })
+        .webp({ quality: 85 })
+        .toFile(join(skinsDir, filename));
+    } catch {
+      // fileFilter only checks the client-supplied mimetype string, so a
+      // corrupt/truncated or renamed non-image body still reaches sharp here.
+      // Surface that as a clean 400 instead of a generic 500.
+      throw new ApiError(400, 'INVALID_IMAGE_FILE', '이미지 파일을 처리할 수 없습니다.');
+    }
 
     res.status(201).json({ imageUrl: `/uploads/skins/${filename}` });
   })
