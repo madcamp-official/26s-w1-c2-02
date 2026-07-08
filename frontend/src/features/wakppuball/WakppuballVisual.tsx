@@ -21,11 +21,13 @@ export function WakppuballVisual({
     runtimeCustomization?.bodyColor ??
     DEFAULT_CUSTOMIZATION.outerColor;
   const innerColor = runtimeCustomization?.innerColor ?? DEFAULT_CUSTOMIZATION.innerColor;
-  const patternId = runtimeCustomization?.pattern?.id;
+  // CSS fallback has no way to render an uploaded photo, so a 'custom'
+  // pattern just falls back to the "no pattern" look here (Phase 8-B
+  // rendering is 3D-only, via WakppuballViewer's triplanar wrap).
+  const patternId =
+    runtimeCustomization?.pattern?.type === 'preset' ? runtimeCustomization.pattern.id : undefined;
   const pattern =
-    patternId === 'none' || patternId === 'dots' || patternId === 'stripes'
-      ? patternId
-      : DEFAULT_CUSTOMIZATION.pattern.id;
+    patternId === 'none' || patternId === 'dots' || patternId === 'stripes' ? patternId : 'none';
 
   return (
     <div

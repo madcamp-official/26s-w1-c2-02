@@ -231,11 +231,23 @@
 }
 ```
 
+`pattern.type: "custom"`인 경우는 대신 이런 모양:
+
+```json
+{
+  "pattern": {
+    "type": "custom",
+    "imageUrl": "/uploads/skins/3f1c2e.jpg"
+  }
+}
+```
+
 | 필드 | 검증 규칙 |
 |---|---|
 | `outerColor` / `innerColor` | 유효한 hex color(`#rrggbb`) 형식이어야 함 |
-| `pattern.type` | 현재 `"preset"`만 허용. `"custom"`을 보내면 `400 VALIDATION_ERROR` (추후 스프린트에서 유저 커스텀 이미지 지원 예정) |
-| `pattern.id` | 정해진 프리셋 목록 중 하나만 허용. 현재 목록: `"none"`(패턴 없음, 기본값), `"dots"`, `"stripes"` (프리셋이 늘어나면 이 목록만 갱신) |
+| `pattern.type` | `"preset"` 또는 `"custom"`(유저 업로드 사진) 중 하나. discriminated union이라 `type`에 따라 아래 필드가 갈린다 |
+| `pattern.id` (`type: "preset"`일 때만) | 정해진 프리셋 목록 중 하나만 허용. 현재 목록: `"none"`(패턴 없음, 기본값), `"dots"`, `"stripes"` (프리셋이 늘어나면 이 목록만 갱신) |
+| `pattern.imageUrl` (`type: "custom"`일 때만) | 1~2048자 문자열. `POST /wakppuballs/upload-skin`(Phase 8-B에서 추가 예정)이 반환하는 URL을 그대로 넣는다 — 클라이언트가 임의 URL을 넣어도 형식 검증만 하고 그대로 저장/반환한다 |
 | `shape` | 현재 `"sphere"`만 허용하는 enum (모양이 늘어나면 이 enum에만 값 추가) |
 
 `modelUrl`은 클라이언트가 보내지 않는다. 서버가 `shape` 값을 보고 내부 매핑 테이블(`shape → modelUrl`)을 조회해 **응답에만** 채워서 반환한다. 현재 매핑 테이블에는 `"sphere"` 하나만 있다.

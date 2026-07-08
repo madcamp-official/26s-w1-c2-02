@@ -4,6 +4,7 @@ import {
   useLayoutEffect,
   useRef,
   useState,
+  type ChangeEvent,
   type FormEvent,
   type MouseEvent,
   type ReactNode
@@ -28,6 +29,7 @@ import {
   createWakppuball,
   getMainWakppuball,
   renameCreatedWakppuball,
+  uploadWakppuballSkin,
   type MainWakppuball
 } from './wakppuballApi';
 import { DEFAULT_CUSTOMIZATION, DEFAULT_FRACTURE } from './wakppuballDefaults';
@@ -47,11 +49,7 @@ import {
   type ThemeHue,
   type ThemeTone
 } from '../../shared/theme/themeManager';
-import type {
-  WakppuballCustomization,
-  WakppuballFracture,
-  WakppuballPattern
-} from './wakppuballTypes';
+import type { WakppuballCustomization, WakppuballFracture, WakppuballPattern } from './wakppuballTypes';
 
 type ViewState =
   | { kind: 'loading' }
@@ -201,6 +199,26 @@ function getCurrentLocation(): Promise<MatchLocation> {
       }
     );
   });
+}
+
+// Phase 8-B: a cheap client-side pass before uploading a skin photo — the
+// server re-resizes to at most 1024px regardless (wakppuballs.routes.ts), so
+// this isn't relied on for correctness, just to avoid shipping a raw phone
+// photo (often 4000px+) over the wire for no benefit.
+async function downscaleImageFile(file: File, maxDimension: number): Promise<File> {
+  const bitmap = await createImageBitmap(file);
+  const scale = Math.min(1, maxDimension / Math.max(bitmap.width, bitmap.height));
+  const width = Math.round(bitmap.width * scale);
+  const height = Math.round(bitmap.height * scale);
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return file;
+  ctx.drawImage(bitmap, 0, 0, width, height);
+  const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.85));
+  if (!blob) return file;
+  return new File([blob], 'skin.jpg', { type: 'image/jpeg' });
 }
 
 function messageForMatchError(error: unknown): string {
@@ -412,11 +430,49 @@ export function MyWakppuballPage() {
   const [name, setName] = useState('나의 왁뿌볼');
   const [outerColor, setOuterColor] = useState(DEFAULT_CUSTOMIZATION.outerColor);
   const [innerColor, setInnerColor] = useState(DEFAULT_CUSTOMIZATION.innerColor);
-  const [patternId, setPatternId] = useState<WakppuballPattern['id']>(DEFAULT_CUSTOMIZATION.pattern.id);
+  const [pattern, setPattern] = useState<WakppuballPattern>({ type: 'preset', id: 'none' });
+  // Uploading a skin photo is its own async operation, independent of the
+  // ball-creation submit below (creating/createError) — separate Loading/
+  // Error/Success states per screen, per CLAUDE.md.
+  const [skinUploadState, setSkinUploadState] = useState<
+    { kind: 'idle' } | { kind: 'uploading' } | { kind: 'error'; message: string }
+  >({ kind: 'idle' });
+  const skinFileInputRef = useRef<HTMLInputElement | null>(null);
   const [thicknessPreset, setThicknessPreset] =
     useState<WakppuballFracture['thicknessPreset']>('medium');
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
+
+  const patternSegment = pattern.type === 'preset' ? pattern.id : 'custom';
+
+  function handlePatternSegmentSelect(value: 'none' | 'dots' | 'stripes' | 'custom') {
+    if (value === 'custom') {
+      // Selecting/reselecting "내 사진" always opens the file picker — there's
+      // no separate "browse" affordance, and re-picking is how you replace an
+      // already-uploaded photo.
+      skinFileInputRef.current?.click();
+      return;
+    }
+    setPattern({ type: 'preset', id: value });
+    setSkinUploadState({ kind: 'idle' });
+  }
+
+  async function handleSkinFileChange(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = ''; // clear so picking the same file again still fires onChange
+    if (!file) return;
+
+    setSkinUploadState({ kind: 'uploading' });
+    try {
+      const resized = await downscaleImageFile(file, 1600);
+      const { imageUrl } = await uploadWakppuballSkin(resized);
+      setPattern({ type: 'custom', imageUrl });
+      setSkinUploadState({ kind: 'idle' });
+    } catch (error) {
+      const message = error instanceof ApiError ? error.message : '이미지 업로드에 실패했습니다.';
+      setSkinUploadState({ kind: 'error', message });
+    }
+  }
 
   const load = useCallback(async () => {
     setView({ kind: 'loading' });
@@ -672,7 +728,7 @@ export function MyWakppuballPage() {
     const customization: WakppuballCustomization = {
       outerColor,
       innerColor,
-      pattern: { type: 'preset', id: patternId },
+      pattern,
       shape: 'sphere'
     };
     const fracture: WakppuballFracture = { thicknessPreset };
@@ -745,7 +801,7 @@ export function MyWakppuballPage() {
       : {
           outerColor,
           innerColor,
-          pattern: { type: 'preset', id: patternId },
+          pattern,
           shape: 'sphere'
         };
 
@@ -814,16 +870,29 @@ export function MyWakppuballPage() {
               <div className="field-stack">
                 <span>패턴</span>
                 <div className="segmented-control" aria-label="패턴 선택">
-                  <SegmentButton value="none" selected={patternId === 'none'} onSelect={setPatternId}>
+                  <SegmentButton value="none" selected={patternSegment === 'none'} onSelect={handlePatternSegmentSelect}>
                     기본
                   </SegmentButton>
-                  <SegmentButton value="dots" selected={patternId === 'dots'} onSelect={setPatternId}>
+                  <SegmentButton value="dots" selected={patternSegment === 'dots'} onSelect={handlePatternSegmentSelect}>
                     dots
                   </SegmentButton>
-                  <SegmentButton value="stripes" selected={patternId === 'stripes'} onSelect={setPatternId}>
+                  <SegmentButton value="stripes" selected={patternSegment === 'stripes'} onSelect={handlePatternSegmentSelect}>
                     stripes
                   </SegmentButton>
+                  <SegmentButton value="custom" selected={patternSegment === 'custom'} onSelect={handlePatternSegmentSelect}>
+                    {skinUploadState.kind === 'uploading' ? '업로드 중…' : '내 사진'}
+                  </SegmentButton>
                 </div>
+                <input
+                  ref={skinFileInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  onChange={handleSkinFileChange}
+                  style={{ display: 'none' }}
+                  aria-hidden="true"
+                  tabIndex={-1}
+                />
+                {skinUploadState.kind === 'error' && <p role="alert">{skinUploadState.message}</p>}
               </div>
 
               <div className="field-stack">
@@ -854,7 +923,12 @@ export function MyWakppuballPage() {
               </div>
 
               {createError && <p role="alert">{createError}</p>}
-              <button className="primary-button" type="button" onClick={handleCreate} disabled={creating}>
+              <button
+                className="primary-button"
+                type="button"
+                onClick={handleCreate}
+                disabled={creating || skinUploadState.kind === 'uploading'}
+              >
                 {creating ? '저장 중…' : '나의 왁뿌볼 만들기'}
               </button>
             </div>

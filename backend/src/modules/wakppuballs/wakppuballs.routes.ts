@@ -1,19 +1,46 @@
+import { randomUUID } from 'node:crypto';
+import { mkdir } from 'node:fs/promises';
+import { join } from 'node:path';
 import { Router } from 'express';
+import multer from 'multer';
+import sharp from 'sharp';
 import { z } from 'zod';
 import { ApiError } from '../../common/api-error.js';
 import { asyncHandler } from '../../common/async-handler.js';
 import type { AuthenticatedRequest } from '../../common/auth.js';
 import { requireAuth } from '../../common/auth.middleware.js';
+import { skinsDir } from '../../common/uploads.js';
 import { validateBody } from '../../common/validate.js';
 import { prisma } from '../../db/prisma.js';
 import type { Prisma } from '@prisma/client';
 
 export const wakppuballsRouter = Router();
 
+// Custom skin upload (Phase 8-B). Kept as its own multipart endpoint, separate
+// from the JSON-only POST / below — the client uploads the photo first here,
+// then passes the returned imageUrl into customization.pattern on create.
+const SKIN_MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
+const SKIN_ALLOWED_MIME_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
+// Triplanar-projected onto the ball at a modest world-space scale (see
+// WakppuballViewer.tsx), same reasoning as the 1024x1024 preset pattern masks
+// — no benefit to storing/serving anything bigger.
+const SKIN_MAX_DIMENSION = 1024;
+
+const skinUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: SKIN_MAX_UPLOAD_BYTES },
+  fileFilter: (_req, file, cb) => {
+    if (!SKIN_ALLOWED_MIME_TYPES.has(file.mimetype)) {
+      cb(new ApiError(400, 'INVALID_IMAGE_FILE', 'jpg/png/webp 이미지만 업로드할 수 있습니다.'));
+      return;
+    }
+    cb(null, true);
+  }
+});
+
 const HEX_COLOR_REGEX = /^#[0-9a-f]{6}$/i;
 
 // 나중에 프리셋이 추가되면 이 배열에만 추가하면 된다.
-const PATTERN_TYPES = ['preset'] as const;
 const PATTERN_PRESET_IDS = ['none', 'dots', 'stripes'] as const;
 const THICKNESS_PRESETS = ['thin', 'medium', 'thick'] as const;
 
@@ -23,13 +50,18 @@ const SHAPE_MODEL_URLS: Record<(typeof SHAPES)[number], string> = {
   sphere: 'https://example.com/models/sphere.glb'
 };
 
+// 프리셋(dots/stripes 등 내장 마스크)과 custom(유저 업로드 사진, /wakppuballs/upload-skin
+// 이 반환한 imageUrl)을 구분하는 discriminated union. customizationJson은 Json 컬럼이라
+// 이 유니온을 넓혀도 마이그레이션은 필요 없다.
+const patternSchema = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('preset'), id: z.enum(PATTERN_PRESET_IDS) }),
+  z.object({ type: z.literal('custom'), imageUrl: z.string().min(1).max(2048) })
+]);
+
 const customizationSchema = z.object({
   outerColor: z.string().regex(HEX_COLOR_REGEX),
   innerColor: z.string().regex(HEX_COLOR_REGEX),
-  pattern: z.object({
-    type: z.enum(PATTERN_TYPES),
-    id: z.enum(PATTERN_PRESET_IDS)
-  }),
+  pattern: patternSchema,
   shape: z.enum(SHAPES)
 });
 
@@ -80,6 +112,54 @@ function parseOwnedIdParam(rawParam: string | string[] | undefined): bigint {
 wakppuballsRouter.get('/me/main', (_req, res) => {
   res.status(501).json({ message: 'TODO: 대표 왁뿌볼 조회 구현' });
 });
+
+wakppuballsRouter.post(
+  '/upload-skin',
+  requireAuth,
+  (req, res, next) => {
+    skinUpload.single('file')(req, res, (err: unknown) => {
+      if (!err) {
+        next();
+        return;
+      }
+      if (err instanceof multer.MulterError && err.code === 'LIMIT_FILE_SIZE') {
+        next(
+          new ApiError(
+            400,
+            'FILE_TOO_LARGE',
+            `이미지는 ${SKIN_MAX_UPLOAD_BYTES / (1024 * 1024)}MB 이하만 업로드할 수 있습니다.`
+          )
+        );
+        return;
+      }
+      next(err);
+    });
+  },
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    if (!req.user) {
+      throw new ApiError(401, 'UNAUTHORIZED', '로그인이 필요합니다.');
+    }
+    if (!req.file) {
+      throw new ApiError(400, 'VALIDATION_ERROR', '업로드할 이미지 파일이 없습니다.');
+    }
+
+    await mkdir(skinsDir, { recursive: true });
+
+    const filename = `${randomUUID()}.webp`;
+    await sharp(req.file.buffer)
+      .rotate() // apply EXIF orientation before resizing, then strip it
+      .resize({
+        width: SKIN_MAX_DIMENSION,
+        height: SKIN_MAX_DIMENSION,
+        fit: 'inside',
+        withoutEnlargement: true
+      })
+      .webp({ quality: 85 })
+      .toFile(join(skinsDir, filename));
+
+    res.status(201).json({ imageUrl: `/uploads/skins/${filename}` });
+  })
+);
 
 wakppuballsRouter.post(
   '/',

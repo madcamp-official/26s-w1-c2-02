@@ -12,16 +12,20 @@ import {
 import { Canvas, useFrame, type ThreeEvent } from '@react-three/fiber';
 import { Html, OrbitControls, useGLTF, useTexture } from '@react-three/drei';
 import {
+  DataTexture,
   Material,
   Matrix4,
   Mesh,
   MeshStandardMaterial,
   RepeatWrapping,
+  SRGBColorSpace,
+  TextureLoader,
   Vector3,
   type Object3D,
   type Texture,
   type WebGLProgramParametersWithUniforms
 } from 'three';
+import { resolveUploadedAssetUrl } from '../../shared/api/http';
 import { playWakppuballCrackSound, playWakppuballSqueezeSound } from '../../shared/sound/soundManager';
 import { breakWakppuball } from './wakppuballApi';
 import type { WakppuballPattern } from './wakppuballTypes';
@@ -38,9 +42,22 @@ import wakppuballModelUrl from '../../assets/models/wakppuball-base.glb?url';
 import patternDotsUrl from '../../assets/models/pattern-dots.png?url';
 import patternStripesUrl from '../../assets/models/pattern-stripes.png?url';
 
-const PATTERN_MODE: Record<WakppuballPattern['id'], number> = { none: 0, dots: 1, stripes: 2 };
-const PATTERN_TRIPLANAR_SCALE = 2.4; // world-space tiling frequency of the pattern textures
+const PATTERN_MODE: Record<'none' | 'dots' | 'stripes' | 'custom', number> = {
+  none: 0,
+  dots: 1,
+  stripes: 2,
+  custom: 3
+};
+const PATTERN_TRIPLANAR_SCALE = 2.4; // world-space tiling frequency of the preset mask textures
 const PATTERN_BLEND_STRENGTH = 0.55; // max whiteness mixed in where the mask alpha is 1
+// A user photo should read as one wrap, not a repeating tile like the preset
+// masks — much lower tiling frequency so roughly one copy covers a hemisphere.
+const CUSTOM_TRIPLANAR_SCALE = 1.0;
+// Bound whenever no custom photo is loaded (or hasn't finished loading yet) so
+// the shader always has a valid sampler2D — a fully transparent 1x1 pixel
+// never contributes visibly even if briefly sampled mid-mode-switch.
+const PLACEHOLDER_CUSTOM_TEXTURE = new DataTexture(new Uint8Array([0, 0, 0, 0]), 1, 1);
+PLACEHOLDER_CUSTOM_TEXTURE.needsUpdate = true;
 
 // Below this pointer travel (px), a press counts as a "touch on one spot" and pops
 // the piece. Past it, the gesture is a drag → OrbitControls rotates, nothing pops.
@@ -134,7 +151,10 @@ function resolvePieceNode(object: Object3D): Object3D | null {
 
 type Piece = { node: Object3D; rest: Vector3; radial: Vector3; tangent: Vector3 };
 
-type PatternUniforms = { uPatternMode: { value: number } };
+type PatternUniforms = {
+  uPatternMode: { value: number };
+  uCustomMap: { value: Texture };
+};
 
 // Phase 8-A: patches the outer shell's compiled MeshStandardMaterial program to
 // triplanar-project the dots/stripes alpha masks from each fragment's WORLD position,
@@ -145,13 +165,32 @@ type PatternUniforms = { uPatternMode: { value: number } };
 // and has no poles. Runs once per material (onBeforeCompile fires on first compile);
 // `uPatternMode` is then live-updated via the returned uniform ref (0 keeps the material
 // a flat MeshStandardMaterial with no visible cost — the branch just isn't taken).
-function attachTriplanarPattern(material: MeshStandardMaterial, dotsMap: Texture, stripesMap: Texture): PatternUniforms {
-  const uniformsRef: PatternUniforms = { uPatternMode: { value: 0 } };
+//
+// Phase 8-B extends the same mechanism for a user-uploaded photo skin (mode 3):
+// unlike the alpha-cutout preset masks, the custom map's full RGB replaces
+// diffuseColor outright (a photo needs to show its own colors, not tint
+// outerColor), and it's triplanar-sampled at a much lower frequency
+// (uCustomScale) so one photo wraps the ball instead of tiling like a pattern.
+// The texture itself is loaded asynchronously at runtime (not a static Vite
+// import like the preset masks) — see the pattern effect below, which swaps
+// uCustomMap.value once the load resolves, live, same as uPatternMode.
+function attachTriplanarPattern(
+  material: MeshStandardMaterial,
+  dotsMap: Texture,
+  stripesMap: Texture,
+  customMap: Texture
+): PatternUniforms {
+  const uniformsRef: PatternUniforms = {
+    uPatternMode: { value: 0 },
+    uCustomMap: { value: customMap }
+  };
   material.onBeforeCompile = (shader: WebGLProgramParametersWithUniforms) => {
     shader.uniforms.uDotsMap = { value: dotsMap };
     shader.uniforms.uStripesMap = { value: stripesMap };
+    shader.uniforms.uCustomMap = uniformsRef.uCustomMap;
     shader.uniforms.uPatternMode = uniformsRef.uPatternMode;
     shader.uniforms.uPatternScale = { value: PATTERN_TRIPLANAR_SCALE };
+    shader.uniforms.uCustomScale = { value: CUSTOM_TRIPLANAR_SCALE };
     shader.uniforms.uPatternBlend = { value: PATTERN_BLEND_STRENGTH };
 
     shader.vertexShader = shader.vertexShader
@@ -169,8 +208,10 @@ varying vec3 vPatternWorldPos;
 varying vec3 vPatternWorldNormal;
 uniform sampler2D uDotsMap;
 uniform sampler2D uStripesMap;
+uniform sampler2D uCustomMap;
 uniform float uPatternMode;
 uniform float uPatternScale;
+uniform float uCustomScale;
 uniform float uPatternBlend;
 
 // Box/triplanar projection: sample the mask from all 3 axis-aligned planes and blend
@@ -188,7 +229,10 @@ vec4 wakppuballTriplanar(sampler2D tex, vec3 worldPos, vec3 worldNormal, float s
       .replace(
         '#include <color_fragment>',
         `#include <color_fragment>
-	if (uPatternMode > 0.5) {
+	if (uPatternMode > 2.5) {
+		vec3 patternNormal = normalize(vPatternWorldNormal);
+		diffuseColor.rgb = wakppuballTriplanar(uCustomMap, vPatternWorldPos, patternNormal, uCustomScale).rgb;
+	} else if (uPatternMode > 0.5) {
 		vec3 patternNormal = normalize(vPatternWorldNormal);
 		vec4 patternSample = uPatternMode < 1.5
 			? wakppuballTriplanar(uDotsMap, vPatternWorldPos, patternNormal, uPatternScale)
@@ -260,7 +304,12 @@ function InteractiveWakppuball({
         materialClones.set(mat, clone);
         if (clone.name === 'outer') {
           outerMaterialRef.current = clone as MeshStandardMaterial;
-          outerPatternUniformsRef.current = attachTriplanarPattern(clone as MeshStandardMaterial, dotsMap, stripesMap);
+          outerPatternUniformsRef.current = attachTriplanarPattern(
+            clone as MeshStandardMaterial,
+            dotsMap,
+            stripesMap,
+            PLACEHOLDER_CUSTOM_TEXTURE
+          );
         } else if (clone.name === 'inner') {
           innerMaterialRef.current = clone as MeshStandardMaterial;
         }
@@ -302,13 +351,35 @@ function InteractiveWakppuball({
     innerMaterialRef.current?.color.set(innerColor);
   }, [scene, outerColor, innerColor]);
 
-  // Phase 8-A: pattern mode is a live uniform (see attachTriplanarPattern), so switching
-  // none/dots/stripes doesn't need a shader recompile.
+  // Phase 8-A/8-B: pattern mode (and, for 'custom', the photo texture itself) are
+  // live uniforms (see attachTriplanarPattern), so switching patterns never needs a
+  // shader recompile. Presets are static Vite assets already loaded (uPatternMode
+  // flips instantly); a custom photo is a runtime URL, so it's fetched here via
+  // TextureLoader and only flipped to mode 3 once the load resolves — until then
+  // the material keeps showing whatever pattern (or none) was active before,
+  // rather than a flash of the untextured placeholder.
+  const patternDepKey = pattern.type === 'preset' ? `preset:${pattern.id}` : `custom:${pattern.imageUrl}`;
   useEffect(() => {
-    if (outerPatternUniformsRef.current) {
-      outerPatternUniformsRef.current.uPatternMode.value = PATTERN_MODE[pattern.id];
+    const uniforms = outerPatternUniformsRef.current;
+    if (!uniforms) return;
+
+    if (pattern.type === 'preset') {
+      uniforms.uPatternMode.value = PATTERN_MODE[pattern.id];
+      return;
     }
-  }, [scene, pattern.id]);
+
+    let cancelled = false;
+    new TextureLoader().load(resolveUploadedAssetUrl(pattern.imageUrl), (texture) => {
+      if (cancelled) return;
+      texture.wrapS = texture.wrapT = RepeatWrapping;
+      texture.colorSpace = SRGBColorSpace;
+      uniforms.uCustomMap.value = texture;
+      uniforms.uPatternMode.value = PATTERN_MODE.custom;
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [scene, patternDepKey]);
 
   // Every piece with its rest position and radial (origin→rest) direction, once.
   const pieces = useMemo<Piece[]>(() => {

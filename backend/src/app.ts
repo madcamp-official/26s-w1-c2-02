@@ -10,6 +10,7 @@ import { matchingRouter } from './modules/matching/matching.routes.js';
 import { usersRouter } from './modules/users/users.routes.js';
 import { wakppuballsRouter } from './modules/wakppuballs/wakppuballs.routes.js';
 import { errorHandler } from './common/api-error.js';
+import { uploadsDir } from './common/uploads.js';
 
 const currentDir = dirname(fileURLToPath(import.meta.url));
 const frontendDistPath = join(currentDir, '../../frontend/dist');
@@ -52,6 +53,10 @@ export function createApp() {
       }
     });
   });
+
+  // User-uploaded skin images (see POST /api/wakppuballs/upload-skin). Served
+  // as plain static files, same mechanism as the frontend dist below.
+  app.use('/uploads', express.static(uploadsDir));
 
   if (existsSync(frontendIndexPath)) {
     app.use(express.static(frontendDistPath));

@@ -12,7 +12,9 @@ export type ErrorCode =
   | 'NO_BREAK_COUNT_LEFT'
   | 'OWNED_WAKPPUBALL_NOT_FOUND'
   | 'ALREADY_IN_QUEUE'
-  | 'WAKPPUBALL_CONSUMED';
+  | 'WAKPPUBALL_CONSUMED'
+  | 'INVALID_IMAGE_FILE'
+  | 'FILE_TOO_LARGE';
 
 export class ApiError extends Error {
   statusCode: number;
