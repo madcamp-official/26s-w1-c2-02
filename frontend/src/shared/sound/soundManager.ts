@@ -30,14 +30,37 @@ const BUTTON_CLICK_SOUND_URLS = [
   '/sound_effect/button_click/glass_006.ogg'
 ];
 
-// Four BGM tracks were delivered; one is picked at random per session when the
-// singleton audio is first created (see getBgmAudio).
-const BGM_URLS = [
-  '/sound_effect/bgm/bgm1.mp3',
-  '/sound_effect/bgm/bgm2.mp3',
-  '/sound_effect/bgm/bgm3.mp3',
-  '/sound_effect/bgm/bgm4.mp3'
-];
+// Four BGM tracks were delivered; the user picks one (see useBgmTrack), kept
+// as a stored preference the same way the color theme is.
+export const BGM_TRACK_IDS = ['bgm1', 'bgm2', 'bgm3', 'bgm4'] as const;
+export type BgmTrackId = (typeof BGM_TRACK_IDS)[number];
+
+const BGM_TRACK_URLS: Record<BgmTrackId, string> = {
+  bgm1: '/sound_effect/bgm/bgm1.mp3',
+  bgm2: '/sound_effect/bgm/bgm2.mp3',
+  bgm3: '/sound_effect/bgm/bgm3.mp3',
+  bgm4: '/sound_effect/bgm/bgm4.mp3'
+};
+
+export const DEFAULT_BGM_TRACK: BgmTrackId = 'bgm1';
+
+const BGM_TRACK_STORAGE_KEY = 'wakppuball.bgmTrack';
+
+function isBgmTrackId(value: string): value is BgmTrackId {
+  return (BGM_TRACK_IDS as readonly string[]).includes(value);
+}
+
+export function getStoredBgmTrack(): BgmTrackId {
+  const stored = localStorage.getItem(BGM_TRACK_STORAGE_KEY);
+  if (stored && isBgmTrackId(stored)) {
+    return stored;
+  }
+  return DEFAULT_BGM_TRACK;
+}
+
+export function storeBgmTrack(track: BgmTrackId) {
+  localStorage.setItem(BGM_TRACK_STORAGE_KEY, track);
+}
 
 function pickRandom<T>(items: readonly T[]): T {
   return items[Math.floor(Math.random() * items.length)];
@@ -69,11 +92,12 @@ export function playButtonClickSound() {
 }
 
 // Singleton element: toggling on/off controls one looping track instead of
-// stacking a new one each time.
+// stacking a new one each time. Created lazily (first play/track-pick), not
+// eagerly on load, so a user who never touches BGM never fetches it.
 let bgmAudio: HTMLAudioElement | null = null;
 function getBgmAudio(): HTMLAudioElement {
   if (!bgmAudio) {
-    bgmAudio = new Audio(pickRandom(BGM_URLS));
+    bgmAudio = new Audio(BGM_TRACK_URLS[getStoredBgmTrack()]);
     bgmAudio.loop = true;
     bgmAudio.volume = 0.35;
   }
@@ -86,4 +110,16 @@ export function playBgm() {
 
 export function pauseBgm() {
   getBgmAudio().pause();
+}
+
+// Switches the track. If BGM was already playing, the new track keeps
+// playing immediately — just reassigning `.src` silently stops playback in
+// every browser, so a resume is needed if it was mid-play.
+export function setBgmTrack(track: BgmTrackId) {
+  const audio = getBgmAudio();
+  const wasPlaying = !audio.paused;
+  audio.src = BGM_TRACK_URLS[track];
+  if (wasPlaying) {
+    void audio.play().catch(() => {});
+  }
 }

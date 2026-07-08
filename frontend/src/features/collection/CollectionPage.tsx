@@ -69,6 +69,7 @@ export function CollectionPage() {
                 {item.isMain && ' (대표)'}
               </p>
               <p>{acquiredLabel(item)}</p>
+              {item.creatorUsername && <p>제작자: {item.creatorUsername}</p>}
               <p>남은 뿌시기 횟수: {item.remainingBreakCount}</p>
             </li>
           ))}

@@ -39,6 +39,8 @@ import { WakppuballView } from './WakppuballView';
 // don't pick up a 3D render).
 import { WakppuballViewer, type WakppuballViewerHandle } from './WakppuballViewer';
 import { useBgmToggle } from '../../shared/sound/useBgmToggle';
+import { useBgmTrack } from '../../shared/sound/useBgmTrack';
+import { BGM_TRACK_IDS } from '../../shared/sound/soundManager';
 import { useColorTheme } from '../../shared/theme/useColorTheme';
 import {
   THEME_IDS,
@@ -70,7 +72,7 @@ type MatchView =
   | { kind: 'matched'; result: MatchedResult; collectionCount: number }
   | { kind: 'error'; message: string };
 
-type ModalKind = 'profile' | 'collection' | 'leaderboard' | 'theme' | null;
+type ModalKind = 'profile' | 'collection' | 'leaderboard' | 'theme' | 'bgm' | null;
 type MeUser = MeResponse['user'];
 type LeaderboardMetric = 'breakCount' | 'distinctMatchedUsers';
 
@@ -78,7 +80,8 @@ const MODAL_TITLES: Record<Exclude<ModalKind, null>, string> = {
   profile: '내 정보',
   collection: '내 컬렉션',
   leaderboard: '리더보드',
-  theme: '테마 선택'
+  theme: '테마 선택',
+  bgm: '배경음악 선택'
 };
 
 // Percentile meaning of each tier, best→worst — kept in sync with the cutoffs
@@ -111,6 +114,40 @@ const THEME_TONE_LABELS: Record<ThemeTone, string> = {
 type MatchLocation = Pick<MatchQueueBody, 'latitude' | 'longitude'>;
 // Viewport point (usually a trigger button's center) the popup animates in from.
 type PopOrigin = { x: number; y: number };
+
+// GET /matching/status keeps returning the same MATCHED entry forever (there's
+// no separate confirm step to consume it — see CLAUDE.md), so the mount-time
+// recovery effect below would otherwise reopen the exact same "매칭됐어요!"
+// popup on every single visit to the main screen, not just right after a real
+// match. This remembers the last matchId actually shown so a *reload* doesn't
+// resurface it, while a genuinely new match (via active polling or a direct
+// queue response) always still shows — those call sites don't consult this.
+const LAST_SEEN_MATCH_ID_STORAGE_KEY = 'wakppuball.lastSeenMatchId';
+
+function hasSeenMatch(matchId: string): boolean {
+  return localStorage.getItem(LAST_SEEN_MATCH_ID_STORAGE_KEY) === matchId;
+}
+
+function markMatchSeen(matchId: string) {
+  localStorage.setItem(LAST_SEEN_MATCH_ID_STORAGE_KEY, matchId);
+}
+
+// Persisted (not just React state) so the "내 컬렉션" notification dot
+// survives a reload — it should stay lit until the user actually opens the
+// collection, not just until the next mount.
+const COLLECTION_HAS_UNSEEN_STORAGE_KEY = 'wakppuball.collectionHasUnseen';
+
+function getCollectionHasUnseen(): boolean {
+  return localStorage.getItem(COLLECTION_HAS_UNSEEN_STORAGE_KEY) === 'true';
+}
+
+function storeCollectionHasUnseen(value: boolean) {
+  if (value) {
+    localStorage.setItem(COLLECTION_HAS_UNSEEN_STORAGE_KEY, 'true');
+  } else {
+    localStorage.removeItem(COLLECTION_HAS_UNSEEN_STORAGE_KEY);
+  }
+}
 
 function getButtonCenter(event: MouseEvent<HTMLButtonElement>): PopOrigin {
   const rect = event.currentTarget.getBoundingClientRect();
@@ -277,15 +314,18 @@ function IconLogout() {
 function IconButton({
   label,
   children,
-  onClick
+  onClick,
+  showBadge
 }: {
   label: string;
   children: ReactNode;
   onClick: (event: MouseEvent<HTMLButtonElement>) => void;
+  showBadge?: boolean;
 }) {
   return (
     <button className="icon-button" type="button" aria-label={label} title={label} onClick={onClick}>
       {children}
+      {showBadge && <span className="icon-button-badge" aria-hidden="true" />}
     </button>
   );
 }
@@ -355,6 +395,7 @@ export function MyWakppuballPage() {
   const [renamingUsername, setRenamingUsername] = useState(false);
   const [renameUsernameError, setRenameUsernameError] = useState<string | null>(null);
   const [matchOpen, setMatchOpen] = useState(false);
+  const [hasUnseenCollectionUpdate, setHasUnseenCollectionUpdate] = useState(() => getCollectionHasUnseen());
   const [matchView, setMatchView] = useState<MatchView>({ kind: 'idle' });
   const [popOrigin, setPopOrigin] = useState<PopOrigin | null>(null);
   const [matchOrigin, setMatchOrigin] = useState<PopOrigin | null>(null);
@@ -362,6 +403,7 @@ export function MyWakppuballPage() {
   const matchSheetRef = useRef<HTMLDivElement | null>(null);
   const viewerRef = useRef<WakppuballViewerHandle>(null);
   const bgm = useBgmToggle();
+  const bgmTrack = useBgmTrack();
   const colorTheme = useColorTheme();
 
   usePopOrigin(activeModal !== null, popOrigin, modalSheetRef);
@@ -418,6 +460,14 @@ export function MyWakppuballPage() {
         return;
       }
 
+      // A genuinely new match (not one we've already surfaced before, e.g. on
+      // a stale reload — see hasSeenMatch above) means the collection just
+      // gained a new/refilled ball, so light up its notification dot too.
+      if (!hasSeenMatch(result.matchId)) {
+        storeCollectionHasUnseen(true);
+        setHasUnseenCollectionUpdate(true);
+      }
+      markMatchSeen(result.matchId);
       const { items } = await getCollection();
       setMatchView({ kind: 'matched', result, collectionCount: items.length });
       await load();
@@ -445,12 +495,15 @@ export function MyWakppuballPage() {
   // where a real WAITING entry existed server-side but the sheet showing its
   // cancel button had been lost client-side) — otherwise it's invisible until
   // the user hits "매칭하기" again and immediately gets ALREADY_IN_QUEUE with
-  // no way back to a cancel button.
+  // no way back to a cancel button. A MATCHED entry, unlike WAITING, never
+  // goes away server-side on its own — only reopen it here if it's a match
+  // the user hasn't already been shown (see hasSeenMatch), so simply
+  // revisiting the main screen doesn't keep resurfacing an old result.
   useEffect(() => {
     (async () => {
       try {
         const result = await getMatchStatus();
-        if (result.status !== 'NONE') {
+        if (result.status === 'WAITING' || (result.status === 'MATCHED' && !hasSeenMatch(result.matchId))) {
           setMatchOpen(true);
         }
         await applyMatchResult(result);
@@ -491,12 +544,19 @@ export function MyWakppuballPage() {
     setPopOrigin(getButtonCenter(event));
     setActiveModal('collection');
     setSelectMainError(null);
+    storeCollectionHasUnseen(false);
+    setHasUnseenCollectionUpdate(false);
     await loadCollection();
   }
 
   function openTheme(event: MouseEvent<HTMLButtonElement>) {
     setPopOrigin(getButtonCenter(event));
     setActiveModal('theme');
+  }
+
+  function openBgm(event: MouseEvent<HTMLButtonElement>) {
+    setPopOrigin(getButtonCenter(event));
+    setActiveModal('bgm');
   }
 
   async function openLeaderboard(event: MouseEvent<HTMLButtonElement>) {
@@ -704,10 +764,10 @@ export function MyWakppuballPage() {
           <IconButton label="배경 테마 선택" onClick={openTheme}>
             <IconPalette />
           </IconButton>
-          <IconButton label={bgm.isOn ? '배경음악 끄기' : '배경음악 켜기'} onClick={bgm.toggle}>
+          <IconButton label="배경음악 선택" onClick={openBgm}>
             {bgm.isOn ? <IconSpeakerOn /> : <IconSpeakerOff />}
           </IconButton>
-          <IconButton label="내 컬렉션" onClick={openCollection}>
+          <IconButton label="내 컬렉션" onClick={openCollection} showBadge={hasUnseenCollectionUpdate}>
             <IconCollection />
           </IconButton>
         </div>
@@ -963,6 +1023,7 @@ export function MyWakppuballPage() {
                           <CampusMatchBadge show={item.isCampusMatch} />
                         </strong>
                         <span>{item.isMain ? '대표 왁뿌볼' : item.acquiredType === 'MATCHED' ? '매칭 획득' : '직접 생성'}</span>
+                        {item.creatorUsername && <span>제작자 {item.creatorUsername}</span>}
                         <span>남은 뿌시기 {item.remainingBreakCount}</span>
                       </button>
                     ))}
@@ -1039,6 +1100,32 @@ export function MyWakppuballPage() {
                       </button>
                     );
                   })}
+                </div>
+              </div>
+            )}
+
+            {activeModal === 'bgm' && (
+              <div className="sheet-content">
+                <button
+                  type="button"
+                  className={bgm.isOn ? 'bgm-power-button on' : 'bgm-power-button'}
+                  onClick={bgm.toggle}
+                >
+                  {bgm.isOn ? <IconSpeakerOn /> : <IconSpeakerOff />}
+                  {bgm.isOn ? '배경음악 끄기' : '배경음악 켜기'}
+                </button>
+                <div className="bgm-track-grid" role="radiogroup" aria-label="배경음악 트랙 선택">
+                  {BGM_TRACK_IDS.map((id, index) => (
+                    <button
+                      key={id}
+                      type="button"
+                      className={id === bgmTrack.track ? 'bgm-track-button selected' : 'bgm-track-button'}
+                      aria-pressed={id === bgmTrack.track}
+                      onClick={() => bgmTrack.setTrack(id)}
+                    >
+                      BGM {index + 1}
+                    </button>
+                  ))}
                 </div>
               </div>
             )}

@@ -23,7 +23,13 @@ collectionRouter.get(
         status: 'ACTIVE'
       },
       include: {
-        model: true,
+        model: {
+          include: {
+            creator: {
+              select: { username: true }
+            }
+          }
+        },
         acquiredFromUser: {
           select: {
             id: true,
@@ -41,6 +47,11 @@ collectionRouter.get(
         ownedId: owned.id.toString(),
         modelId: owned.model.id.toString(),
         name: owned.model.name,
+        // The wakppuball's original designer — always the caller for
+        // CREATED balls, and the match partner for MATCHED balls (matching
+        // always trades the *created* ball, and matched copies share the
+        // same WakppuballModel row rather than duplicating it).
+        creatorUsername: owned.model.creator?.username ?? null,
         modelUrl: owned.model.modelUrl,
         thumbnailUrl: owned.model.thumbnailUrl,
         customization: owned.model.customizationJson,

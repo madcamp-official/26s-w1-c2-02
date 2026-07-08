@@ -17,6 +17,7 @@ const createdItem: CollectionItem = {
   ownedId: '10',
   modelId: '5',
   name: '내가 만든 볼',
+  creatorUsername: 'me',
   modelUrl: null,
   thumbnailUrl: '/thumb.png',
   customization: {
@@ -38,6 +39,7 @@ const matchedItem: CollectionItem = {
   ownedId: '20',
   modelId: '8',
   name: '매칭으로 받은 볼',
+  creatorUsername: 'partner',
   modelUrl: null,
   thumbnailUrl: '/thumb2.png',
   customization: {
