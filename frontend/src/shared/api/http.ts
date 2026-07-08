@@ -48,7 +48,11 @@ type RequestOptions = RequestInit & {
 export async function apiRequest<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const { token, ...requestInit } = options;
   const headers = new Headers(requestInit.headers);
-  headers.set('Content-Type', 'application/json');
+  // A FormData body must NOT get a manual Content-Type — the browser sets the
+  // multipart boundary itself. Only force JSON for the (common) other bodies.
+  if (!(requestInit.body instanceof FormData)) {
+    headers.set('Content-Type', 'application/json');
+  }
 
   const authToken = token ?? tokenStorage.get();
   if (authToken) {

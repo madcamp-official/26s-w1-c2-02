@@ -1,4 +1,4 @@
-import { API_BASE_URL, ApiError, apiRequest, tokenStorage } from '../../shared/api/http';
+import { ApiError, apiRequest } from '../../shared/api/http';
 import { fetchMe } from '../auth/authApi';
 import { getCollection } from '../collection/collectionApi';
 import type {
@@ -114,35 +114,17 @@ export function createWakppuball(body: CreateWakppuballBody): Promise<{ wakppuba
   });
 }
 
-// POST /wakppuballs/upload-skin — Phase 8-B. Bypasses apiRequest since that
-// unconditionally sets Content-Type: application/json; FormData needs the
-// browser to set its own multipart boundary instead. Returns a URL to feed
-// into customization.pattern as { type: 'custom', imageUrl }.
-export async function uploadWakppuballSkin(file: File): Promise<{ imageUrl: string }> {
+// POST /wakppuballs/upload-skin — Phase 8-B. apiRequest skips the JSON
+// Content-Type for FormData bodies (letting the browser set the multipart
+// boundary), so this reuses it and inherits the shared auth + error parsing.
+// Returns a URL to feed into customization.pattern as { type: 'custom', imageUrl }.
+export function uploadWakppuballSkin(file: File): Promise<{ imageUrl: string }> {
   const formData = new FormData();
   formData.append('file', file);
-
-  const headers = new Headers();
-  const token = tokenStorage.get();
-  if (token) {
-    headers.set('Authorization', `Bearer ${token}`);
-  }
-
-  const response = await fetch(`${API_BASE_URL}/wakppuballs/upload-skin`, {
+  return apiRequest<{ imageUrl: string }>('/wakppuballs/upload-skin', {
     method: 'POST',
-    headers,
     body: formData
   });
-
-  if (!response.ok) {
-    const body = await response.json().catch(() => null);
-    if (body?.error?.code && body?.error?.message) {
-      throw new ApiError(body.error.code, body.error.message);
-    }
-    throw new ApiError('UNKNOWN_ERROR', `API request failed: ${response.status}`);
-  }
-
-  return response.json() as Promise<{ imageUrl: string }>;
 }
 
 // PATCH /wakppuballs/me/created — renames the caller's own created wakppuball
