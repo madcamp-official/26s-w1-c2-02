@@ -1,4 +1,5 @@
 import type { ErrorRequestHandler } from 'express';
+import multer from 'multer';
 
 export type ErrorCode =
   | 'VALIDATION_ERROR'
@@ -12,7 +13,9 @@ export type ErrorCode =
   | 'NO_BREAK_COUNT_LEFT'
   | 'OWNED_WAKPPUBALL_NOT_FOUND'
   | 'ALREADY_IN_QUEUE'
-  | 'WAKPPUBALL_CONSUMED';
+  | 'WAKPPUBALL_CONSUMED'
+  | 'INVALID_IMAGE_FILE'
+  | 'FILE_TOO_LARGE';
 
 export class ApiError extends Error {
   statusCode: number;
@@ -31,6 +34,19 @@ export const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
       error: {
         code: err.code,
         message: err.message
+      }
+    });
+  }
+
+  // multer rejects (e.g. LIMIT_FILE_SIZE) reach here as MulterErrors. Normalize
+  // them into the common 400 shape so every upload route gets consistent
+  // handling without its own inline error-translation middleware.
+  if (err instanceof multer.MulterError) {
+    const isTooLarge = err.code === 'LIMIT_FILE_SIZE';
+    return res.status(400).json({
+      error: {
+        code: isTooLarge ? 'FILE_TOO_LARGE' : 'INVALID_IMAGE_FILE',
+        message: isTooLarge ? '업로드할 수 있는 파일 크기를 초과했습니다.' : '파일 업로드에 실패했습니다.'
       }
     });
   }

@@ -1,7 +1,6 @@
-export type WakppuballPattern = {
-  type: 'preset';
-  id: 'none' | 'dots' | 'stripes';
-};
+export type WakppuballPattern =
+  | { type: 'preset'; id: 'none' | 'dots' | 'stripes' }
+  | { type: 'custom'; imageUrl: string };
 
 export type WakppuballShape = 'sphere';
 

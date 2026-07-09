@@ -114,6 +114,19 @@ export function createWakppuball(body: CreateWakppuballBody): Promise<{ wakppuba
   });
 }
 
+// POST /wakppuballs/upload-skin — Phase 8-B. apiRequest skips the JSON
+// Content-Type for FormData bodies (letting the browser set the multipart
+// boundary), so this reuses it and inherits the shared auth + error parsing.
+// Returns a URL to feed into customization.pattern as { type: 'custom', imageUrl }.
+export function uploadWakppuballSkin(file: File): Promise<{ imageUrl: string }> {
+  const formData = new FormData();
+  formData.append('file', file);
+  return apiRequest<{ imageUrl: string }>('/wakppuballs/upload-skin', {
+    method: 'POST',
+    body: formData
+  });
+}
+
 // PATCH /wakppuballs/me/created — renames the caller's own created wakppuball
 // (never a matched one; there's exactly one per user, so no ownedId needed).
 export function renameCreatedWakppuball(name: string): Promise<{ ok: true; ownedId: string; name: string }> {

@@ -9,6 +9,13 @@ export default defineConfig({
       '/api': {
         target: 'http://localhost:3000',
         changeOrigin: true
+      },
+      // Phase 8-B: user-uploaded skin images, served by the backend's
+      // express.static('/uploads', ...) mount — same relative-path dev setup
+      // as /api above.
+      '/uploads': {
+        target: 'http://localhost:3000',
+        changeOrigin: true
       }
     }
   }
